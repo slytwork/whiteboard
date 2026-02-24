@@ -61,11 +61,11 @@ export function Field({
   };
 
   return (
-    <div className="relative left-1/2 w-screen -translate-x-1/2 px-0 py-2">
+    <div className="relative w-full px-0 py-2">
       <svg
         viewBox={`0 0 ${FIELD_WIDTH_PX} ${FIELD_LENGTH_PX}`}
-        preserveAspectRatio="none"
-        className="h-[calc(100vh-250px)] min-h-[560px] w-screen rounded-none border-y border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
+        preserveAspectRatio="xMidYMid meet"
+        className="mx-auto block h-[calc(100vh-250px)] min-h-[560px] max-h-[82vh] w-auto max-w-full rounded-xl border border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
         onPointerDown={handleFieldClick}
       >
         <rect x={0} y={0} width={FIELD_WIDTH_PX} height={FIELD_LENGTH_PX} fill="#111111" />
