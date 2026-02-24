@@ -46,7 +46,7 @@ export const computeFramePositions = (
   const map = Object.fromEntries(players.map((p) => [p.id, startPositions[p.id] ?? p.position]));
 
   for (const player of players) {
-    if (player.team === 'defense' && player.assignment === 'man' && player.manTargetId) {
+    if (player.team === 'defense' && player.assignment === 'man' && player.manTargetId && player.path.length === 0) {
       const target = players.find((p) => p.id === player.manTargetId);
       if (target) {
         const targetStart = startPositions[target.id] ?? target.position;

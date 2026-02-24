@@ -28,3 +28,28 @@ export const evaluateSeparation = (
     };
   });
 };
+
+export const getBlockedDefenderIds = (
+  blockers: { position: Point }[],
+  defenders: { id: string; position: Point }[],
+  blockRadius = 1.8
+): Set<string> => {
+  const blocked = new Set<string>();
+
+  for (const blocker of blockers) {
+    let nearest: { id: string; distance: number } | undefined;
+    for (const defender of defenders) {
+      if (blocked.has(defender.id)) continue;
+      const defenderDistance = distance(blocker.position, defender.position);
+      if (!nearest || defenderDistance < nearest.distance) {
+        nearest = { id: defender.id, distance: defenderDistance };
+      }
+    }
+
+    if (nearest && nearest.distance <= blockRadius) {
+      blocked.add(nearest.id);
+    }
+  }
+
+  return blocked;
+};

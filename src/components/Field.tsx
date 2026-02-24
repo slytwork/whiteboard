@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+
 import {
   FIELD_LENGTH_PX,
   FIELD_WIDTH_PX,
@@ -7,7 +9,7 @@ import {
   YARD_TO_PX,
   yardsToPx
 } from '@/lib/coordinateSystem';
-import { Player } from '@/lib/movementEngine';
+import { Player, Team } from '@/lib/movementEngine';
 import { snapPointToYard } from '@/lib/snapping';
 
 const offenseEligibleRoles = new Set(['WR', 'TE', 'RB']);
@@ -17,6 +19,7 @@ type FieldProps = {
   selectedPlayerId?: string;
   ballSpotYard: number;
   interactive: boolean;
+  hiddenPathTeams?: Team[];
   onSelectPlayer: (id: string) => void;
   onMovePlayer: (id: string, point: Point) => void;
   onAppendPathPoint: (id: string, point: Point) => void;
@@ -25,6 +28,7 @@ type FieldProps = {
 const toSvg = (point: Point) => ({ x: yardsToPx(point.x), y: yardsToPx(point.y) });
 
 const getSnappedPointFromPointer = (svg: SVGSVGElement, clientX: number, clientY: number): Point => {
+  const viewBox = svg.viewBox.baseVal;
   const ctm = svg.getScreenCTM();
   if (ctm) {
     const pt = svg.createSVGPoint();
@@ -38,8 +42,8 @@ const getSnappedPointFromPointer = (svg: SVGSVGElement, clientX: number, clientY
   const relativeX = (clientX - rect.left) / rect.width;
   const relativeY = (clientY - rect.top) / rect.height;
   return snapPointToYard({
-    x: relativeX * (FIELD_WIDTH_PX / YARD_TO_PX),
-    y: relativeY * (FIELD_LENGTH_PX / YARD_TO_PX)
+    x: (viewBox.x + relativeX * viewBox.width) / YARD_TO_PX,
+    y: (viewBox.y + relativeY * viewBox.height) / YARD_TO_PX
   });
 };
 
@@ -48,11 +52,25 @@ export function Field({
   selectedPlayerId,
   ballSpotYard,
   interactive,
+  hiddenPathTeams = [],
   onSelectPlayer,
   onMovePlayer,
   onAppendPathPoint
 }: FieldProps) {
   const selected = players.find((p) => p.id === selectedPlayerId);
+  const dynamicViewBox = useMemo(() => {
+    const minVisibleHeight = yardsToPx(60);
+    const edgePadding = yardsToPx(10);
+    const playerYs = players.map((player) => yardsToPx(player.position.y));
+    const minPlayerY = playerYs.length ? Math.min(...playerYs) : yardsToPx(ballSpotYard);
+    const maxPlayerY = playerYs.length ? Math.max(...playerYs) : yardsToPx(ballSpotYard);
+    const playerSpan = Math.max(0, maxPlayerY - minPlayerY) + edgePadding * 2;
+    const viewHeight = Math.min(FIELD_LENGTH_PX, Math.max(minVisibleHeight, playerSpan));
+    const desiredCenterY = yardsToPx(ballSpotYard);
+    const maxTop = FIELD_LENGTH_PX - viewHeight;
+    const top = Math.max(0, Math.min(maxTop, desiredCenterY - viewHeight / 2));
+    return { x: 0, y: top, width: FIELD_WIDTH_PX, height: viewHeight };
+  }, [ballSpotYard, players]);
 
   const handleFieldClick = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!interactive || !selected) return;
@@ -63,11 +81,26 @@ export function Field({
   return (
     <div className="relative w-full px-0 py-2">
       <svg
-        viewBox={`0 0 ${FIELD_WIDTH_PX} ${FIELD_LENGTH_PX}`}
-        preserveAspectRatio="xMidYMid meet"
-        className="mx-auto block h-[calc(100vh-250px)] min-h-[560px] max-h-[82vh] w-auto max-w-full rounded-xl border border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
+        viewBox={`${dynamicViewBox.x} ${dynamicViewBox.y} ${dynamicViewBox.width} ${dynamicViewBox.height}`}
+        preserveAspectRatio="xMidYMid slice"
+        className="block h-[calc(100vh-250px)] min-h-[560px] max-h-[82vh] w-full rounded-xl border border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
         onPointerDown={handleFieldClick}
       >
+        <defs>
+          <marker id="offense-arrow-end" markerWidth="4" markerHeight="4" refX="3.5" refY="2" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M 0 0 L 3.5 2 L 0 4 z" fill="#ffffff" />
+          </marker>
+          <marker id="defense-arrow-end" markerWidth="4" markerHeight="4" refX="3.5" refY="2" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M 0 0 L 3.5 2 L 0 4 z" fill="#a1a1aa" />
+          </marker>
+          <marker id="offense-block-end" markerWidth="4" markerHeight="4" refX="3.1" refY="2" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M 2.6 0.8 L 2.6 3.2" stroke="#ffffff" strokeWidth="0.9" strokeLinecap="round" fill="none" />
+          </marker>
+          <marker id="defense-block-end" markerWidth="4" markerHeight="4" refX="3.1" refY="2" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M 2.6 0.8 L 2.6 3.2" stroke="#a1a1aa" strokeWidth="0.9" strokeLinecap="round" fill="none" />
+          </marker>
+        </defs>
+
         <rect x={0} y={0} width={FIELD_WIDTH_PX} height={FIELD_LENGTH_PX} fill="#111111" />
         <rect x={0} y={0} width={FIELD_WIDTH_PX} height={yardsToPx(10)} fill="#202020" />
         <rect x={0} y={yardsToPx(110)} width={FIELD_WIDTH_PX} height={yardsToPx(10)} fill="#202020" />
@@ -133,16 +166,25 @@ export function Field({
           const pathD = pathPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
           const isSelected = player.id === selectedPlayerId;
           const isEligible = player.team === 'offense' && offenseEligibleRoles.has(player.role);
+          const isArrowAssignment = player.assignment === 'run' || player.assignment === 'pass-route';
+          const isBlockAssignment = player.assignment === 'block';
+          const markerEnd = isBlockAssignment
+            ? `url(#${player.team === 'offense' ? 'offense' : 'defense'}-block-end)`
+            : isArrowAssignment
+              ? `url(#${player.team === 'offense' ? 'offense' : 'defense'}-arrow-end)`
+              : undefined;
 
           return (
             <g key={player.id}>
-              {player.path.length ? (
+              {!hiddenPathTeams.includes(player.team) && player.path.length ? (
                 <path
                   d={pathD}
                   stroke={player.team === 'offense' ? '#ffffff' : '#a1a1aa'}
                   strokeDasharray={player.assignment === 'block' ? '3 3' : 'none'}
+                  markerEnd={markerEnd}
                   fill="none"
                   strokeWidth={isSelected ? 3.2 : 2.2}
+                  strokeLinecap="round"
                   opacity={0.9}
                 />
               ) : null}
@@ -171,22 +213,22 @@ export function Field({
                 className="cursor-pointer"
               >
                 <circle
-                  r={8.5}
+                  r={6.375}
                   fill={player.team === 'offense' ? '#ffffff' : '#52525b'}
                   stroke={isSelected ? '#ffffff' : '#09090b'}
-                  strokeWidth={isSelected ? 3 : 2}
+                  strokeWidth={isSelected ? 2.25 : 1.5}
                 />
-                <text x={0} y={3} textAnchor="middle" fill={player.team === 'offense' ? '#09090b' : '#fafafa'} fontSize={7} fontWeight={800}>
+                <text x={0} y={2.25} textAnchor="middle" fill={player.team === 'offense' ? '#09090b' : '#fafafa'} fontSize={5.25} fontWeight={800}>
                   {player.role}
                 </text>
-                {isEligible ? <circle r={11.5} fill="none" stroke="#e4e4e7" strokeWidth={1.1} opacity={0.9} /> : null}
+                {isEligible ? <circle r={8.625} fill="none" stroke="#e4e4e7" strokeWidth={0.825} opacity={0.9} /> : null}
               </g>
             </g>
           );
         })}
       </svg>
       <p className="mt-2 text-xs font-medium text-zinc-300">
-        Drag players for alignment. Click field for snapped 1-yard path points from selected player.
+        Drag players for alignment. Click field for snapped 1/5-yard path points from selected player.
       </p>
     </div>
   );
