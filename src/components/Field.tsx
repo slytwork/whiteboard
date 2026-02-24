@@ -19,6 +19,7 @@ type FieldProps = {
   selectedPlayerId?: string;
   ballSpotYard: number;
   interactive: boolean;
+  editableTeam?: Team;
   hiddenPathTeams?: Team[];
   onSelectPlayer: (id: string) => void;
   onMovePlayer: (id: string, point: Point) => void;
@@ -52,6 +53,7 @@ export function Field({
   selectedPlayerId,
   ballSpotYard,
   interactive,
+  editableTeam,
   hiddenPathTeams = [],
   onSelectPlayer,
   onMovePlayer,
@@ -73,17 +75,17 @@ export function Field({
   }, [ballSpotYard, players]);
 
   const handleFieldClick = (event: React.PointerEvent<SVGSVGElement>) => {
-    if (!interactive || !selected) return;
+    if (!interactive || !selected || (editableTeam && selected.team !== editableTeam)) return;
     const point = getSnappedPointFromPointer(event.currentTarget, event.clientX, event.clientY);
     onAppendPathPoint(selected.id, point);
   };
 
   return (
-    <div className="relative w-full px-0 py-2">
+    <div className="relative flex h-full w-full flex-col px-0 py-2">
       <svg
         viewBox={`${dynamicViewBox.x} ${dynamicViewBox.y} ${dynamicViewBox.width} ${dynamicViewBox.height}`}
         preserveAspectRatio="xMidYMid slice"
-        className="block h-[calc(100vh-250px)] min-h-[560px] max-h-[82vh] w-full rounded-xl border border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
+        className="block min-h-0 flex-1 w-full rounded-xl border border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
         onPointerDown={handleFieldClick}
       >
         <defs>
@@ -105,8 +107,14 @@ export function Field({
         <rect x={0} y={0} width={FIELD_WIDTH_PX} height={yardsToPx(10)} fill="#202020" />
         <rect x={0} y={yardsToPx(110)} width={FIELD_WIDTH_PX} height={yardsToPx(10)} fill="#202020" />
 
+        <line x1={0} x2={0} y1={0} y2={FIELD_LENGTH_PX} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
+        <line x1={FIELD_WIDTH_PX} x2={FIELD_WIDTH_PX} y1={0} y2={FIELD_LENGTH_PX} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
+        <line x1={0} x2={FIELD_WIDTH_PX} y1={yardsToPx(10)} y2={yardsToPx(10)} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
+        <line x1={0} x2={FIELD_WIDTH_PX} y1={yardsToPx(110)} y2={yardsToPx(110)} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
+
         {Array.from({ length: 25 }).map((_, i) => {
           const yard = i * 5;
+          if (yard === 10 || yard === 110) return null;
           const y = yardsToPx(yard);
           return (
             <line
@@ -117,7 +125,7 @@ export function Field({
               y2={y}
               stroke={yard % 10 === 0 ? '#f5f5f5' : '#9ca3af'}
               strokeWidth={yard % 10 === 0 ? 1.6 : 0.8}
-              opacity={0.7}
+              opacity={yard % 10 === 0 ? 0.28 : 0.16}
             />
           );
         })}
@@ -129,10 +137,10 @@ export function Field({
           const y = yardsToPx(yard);
           return (
             <g key={`num-${yard}`}>
-              <text x={yardsToPx(6)} y={y - 2} fill="#fafafa" fontSize={12} fontWeight={700}>
+              <text x={yardsToPx(6)} y={y - 2} fill="#fafafa" fontSize={12} fontWeight={700} opacity={0.38}>
                 {display}
               </text>
-              <text x={yardsToPx(47)} y={y - 2} fill="#fafafa" fontSize={12} fontWeight={700}>
+              <text x={yardsToPx(47)} y={y - 2} fill="#fafafa" fontSize={12} fontWeight={700} opacity={0.38}>
                 {display}
               </text>
             </g>
@@ -142,7 +150,7 @@ export function Field({
         {Array.from({ length: 100 }).map((_, i) => {
           const y = yardsToPx(i + 10);
           return (
-            <g key={`hash-${i}`} opacity={0.9}>
+            <g key={`hash-${i}`} opacity={0.28}>
               <line x1={yardsToPx(20)} x2={yardsToPx(21)} y1={y} y2={y} stroke="#f3f4f6" strokeWidth={1} />
               <line x1={yardsToPx(32.3)} x2={yardsToPx(33.3)} y1={y} y2={y} stroke="#f3f4f6" strokeWidth={1} />
             </g>
@@ -193,7 +201,7 @@ export function Field({
                 transform={`translate(${p.x}, ${p.y})`}
                 onPointerDown={(event) => {
                   event.stopPropagation();
-                  if (!interactive) return;
+                  if (!interactive || (editableTeam && player.team !== editableTeam)) return;
                   onSelectPlayer(player.id);
                   const svg = (event.target as SVGElement).ownerSVGElement;
                   if (!svg) return;
@@ -210,7 +218,7 @@ export function Field({
                   window.addEventListener('pointermove', move);
                   window.addEventListener('pointerup', up);
                 }}
-                className="cursor-pointer"
+                className={interactive && (!editableTeam || player.team === editableTeam) ? 'cursor-pointer' : 'cursor-not-allowed'}
               >
                 <circle
                   r={6.375}
@@ -227,7 +235,7 @@ export function Field({
           );
         })}
       </svg>
-      <p className="mt-2 text-xs font-medium text-zinc-300">
+      <p className="mt-2 shrink-0 text-xs font-medium text-zinc-300">
         Drag players for alignment. Click field for snapped 1/5-yard path points from selected player.
       </p>
     </div>

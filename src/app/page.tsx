@@ -6,7 +6,7 @@ import { Field } from '@/components/Field';
 import { PlayerPiece } from '@/components/PlayerPiece';
 import { RevealOverlay } from '@/components/RevealOverlay';
 import { Scoreboard } from '@/components/Scoreboard';
-import { Point } from '@/lib/coordinateSystem';
+import { clampFieldPoint, PLAYABLE_END_YARD, Point } from '@/lib/coordinateSystem';
 import { AssignmentType, computeFramePositions, Player } from '@/lib/movementEngine';
 import { evaluateSeparation, getBlockedDefenderIds } from '@/lib/separationEngine';
 import { randomSituation, Situation } from '@/lib/situationEngine';
@@ -23,6 +23,43 @@ type Phase =
   | 'match-over';
 
 const clonePlayers = (players: Player[]): Player[] => players.map((p) => ({ ...p, position: { ...p.position }, path: [...p.path] }));
+const clampToLineOfScrimmageSide = (player: Player, point: Point, lineOfScrimmageYard: number): Point =>
+  clampFieldPoint({
+    x: point.x,
+    y: player.team === 'offense' ? Math.max(point.y, lineOfScrimmageYard) : Math.min(point.y, lineOfScrimmageYard)
+  });
+
+const projectFormationToSituation = (players: Player[], fromLosYard: number, toLosYard: number): Player[] =>
+  players.map((player) => {
+    const translated = clampFieldPoint({
+      x: player.position.x,
+      y: toLosYard + (player.position.y - fromLosYard)
+    });
+    return {
+      ...player,
+      position: clampToLineOfScrimmageSide(player, translated, toLosYard),
+      assignment: 'none',
+      path: [],
+      manTargetId: undefined
+    };
+  });
+
+const getPreSnapPenalty = (
+  players: Player[],
+  lineOfScrimmageYard: number
+): { label: 'False start' | 'Offsides'; team: 'offense' | 'defense' } | undefined => {
+  const offensePastLine = players.some((player) => player.team === 'offense' && player.position.y < lineOfScrimmageYard);
+  if (offensePastLine) {
+    return { label: 'False start', team: 'offense' };
+  }
+
+  const defensePastLine = players.some((player) => player.team === 'defense' && player.position.y > lineOfScrimmageYard);
+  if (defensePastLine) {
+    return { label: 'Offsides', team: 'defense' };
+  }
+
+  return undefined;
+};
 
 const createRoster = (situation: Situation): Player[] => {
   const los = situation.ballSpotYard;
@@ -60,10 +97,12 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>('offense-design');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>();
   const [activeAssignment, setActiveAssignment] = useState<AssignmentType>();
+  const [controlsOpen, setControlsOpen] = useState(true);
   const [offenseWins, setOffenseWins] = useState(0);
   const [defenseWins, setDefenseWins] = useState(0);
   const [resultMessage, setResultMessage] = useState('');
   const [discussionSeconds, setDiscussionSeconds] = useState(5);
+  const [queuedRoundSituation, setQueuedRoundSituation] = useState<Situation>();
 
   const initialPositionsRef = useRef<Record<string, Point>>({});
 
@@ -72,16 +111,20 @@ export default function Home() {
   const resetRound = (nextSituation?: Situation) => {
     const fresh = nextSituation ?? randomSituation(situation.id);
     setSituation(fresh);
-    setPlayers(createRoster(fresh));
+    setPlayers((prev) => (prev.length ? projectFormationToSituation(prev, situation.ballSpotYard, fresh.ballSpotYard) : createRoster(fresh)));
     setSelectedPlayerId(undefined);
     setPhase('offense-design');
   };
 
   const resetMatch = () => {
+    const fresh = randomSituation();
     setOffenseWins(0);
     setDefenseWins(0);
     setResultMessage('');
-    resetRound(randomSituation());
+    setSituation(fresh);
+    setPlayers(createRoster(fresh));
+    setSelectedPlayerId(undefined);
+    setPhase('offense-design');
   };
 
   const isInteractive = phase === 'offense-design' || phase === 'defense-design';
@@ -140,7 +183,9 @@ export default function Home() {
   };
 
   const movePlayer = (id: string, point: Point) => {
-    setPlayers((prev) => prev.map((p) => (p.id === id ? { ...p, position: point } : p)));
+    setPlayers((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, position: clampToLineOfScrimmageSide(p, point, situation.ballSpotYard) } : p))
+    );
   };
 
   const appendPathPoint = (id: string, point: Point) => {
@@ -148,6 +193,7 @@ export default function Home() {
   };
 
   const evaluateRound = (finalPlayers: Player[]) => {
+    setQueuedRoundSituation(undefined);
     const offenseEligible = finalPlayers.filter((p) => p.team === 'offense' && ELIGIBLE_ROLES.has(p.role));
     const defenders = finalPlayers.filter((p) => p.team === 'defense');
     const blockers = finalPlayers.filter((p) => p.team === 'offense' && p.assignment === 'block');
@@ -175,6 +221,16 @@ export default function Home() {
   };
 
   const animateReveal = () => {
+    const preSnapPenalty = getPreSnapPenalty(players, situation.ballSpotYard);
+    if (preSnapPenalty) {
+      const nextBallSpot = Math.min(PLAYABLE_END_YARD, situation.ballSpotYard + 5);
+      setQueuedRoundSituation({ ...situation, ballSpotYard: nextBallSpot });
+      setResultMessage(`${preSnapPenalty.label} on the ${preSnapPenalty.team}. Ball moved back 5 yards.`);
+      setDiscussionSeconds(3);
+      setPhase('discussion');
+      return;
+    }
+
     setPhase('animating');
     const startPlayers = clonePlayers(players);
     initialPositionsRef.current = Object.fromEntries(startPlayers.map((p) => [p.id, { ...p.position }]));
@@ -234,9 +290,10 @@ export default function Home() {
 
   useEffect(() => {
     if (phase === 'discussion' && discussionSeconds <= 0) {
-      resetRound();
+      resetRound(queuedRoundSituation);
+      setQueuedRoundSituation(undefined);
     }
-  }, [discussionSeconds, phase]);
+  }, [discussionSeconds, phase, queuedRoundSituation]);
 
   useEffect(() => {
     setPlayers(createRoster(situation));
@@ -246,71 +303,93 @@ export default function Home() {
   const defensivePlayers = players.filter((p) => p.team === 'defense');
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black">
-      <div className="sticky top-0 z-40 px-2 pt-2">
-        <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/90 shadow-[0_14px_36px_rgba(0,0,0,0.45)] backdrop-blur">
+    <main className="h-screen overflow-hidden bg-gradient-to-b from-black via-zinc-950 to-black">
+      <button
+        onClick={() => setControlsOpen((prev) => !prev)}
+        className="fixed left-3 top-3 z-50 rounded-md border border-zinc-600 bg-zinc-950/90 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-900"
+      >
+        {controlsOpen ? 'Hide Controls' : 'Show Controls'}
+      </button>
+
+      <aside
+        className={`fixed left-0 top-0 z-40 h-screen w-[320px] max-w-[86vw] transform border-r border-zinc-700 bg-zinc-950/95 shadow-[14px_0_36px_rgba(0,0,0,0.45)] backdrop-blur transition-transform duration-300 ${
+          controlsOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex h-full flex-col pb-2 pt-14">
+          <div className="min-h-0 flex-1 space-y-3 overflow-hidden p-3">
+            {phase === 'animating' ? (
+              <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-center text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
+                Simultaneous Reveal In Progress
+              </div>
+            ) : null}
+
+            {(phase === 'offense-design' || phase === 'defense-design') && (
+              <>
+                {currentSelected?.assignment === 'man' ? (
+                  <div className="rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3 text-xs font-semibold text-zinc-100">
+                    <label className="mr-2 uppercase tracking-wide text-zinc-400">Man target</label>
+                    <select
+                      className="rounded-md border border-zinc-600 bg-black px-2 py-1 text-xs font-semibold text-zinc-100"
+                      value={currentSelected.manTargetId}
+                      onChange={(e) => setManTarget(e.target.value)}
+                    >
+                      {offensivePlayers.filter((p) => ELIGIBLE_ROLES.has(p.role)).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                <AssignmentPanel
+                  selectedPlayer={currentSelected}
+                  phase={phase}
+                  activeAssignment={activeAssignment}
+                  setAssignment={setAssignment}
+                  clearPath={clearPath}
+                  lockPhase={lockPhase}
+                />
+              </>
+            )}
+
+            <div>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Players</p>
+              <div className="grid grid-cols-2 gap-2 text-xs text-zinc-200">
+                {[...offensivePlayers, ...defensivePlayers].map((player) => (
+                  <PlayerPiece
+                    key={player.id}
+                    player={player}
+                    isSelected={player.id === selectedPlayerId}
+                    onClick={handleSelectPlayer}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <section className={`flex h-full min-h-0 w-full flex-col px-2 pb-2 pt-14 transition-all duration-300 ${controlsOpen ? 'md:pl-[330px]' : 'md:pl-2'}`}>
+        <div className="mb-2 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/90 backdrop-blur">
           <Scoreboard situation={situation} offenseWins={offenseWins} defenseWins={defenseWins} onReset={resetMatch} />
           <div className="border-t border-zinc-800 px-4 py-2 text-xs font-semibold text-zinc-300">
             {situation.description} • Shared-device duel. First side to 3 round wins takes the match.
           </div>
-          {phase === 'animating' ? (
-            <div className="border-t border-zinc-800 px-4 py-2 text-center text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
-              Simultaneous Reveal In Progress
-            </div>
-          ) : null}
-
-          {(phase === 'offense-design' || phase === 'defense-design') && (
-            <div className="border-t border-zinc-800 p-3">
-              {currentSelected?.assignment === 'man' ? (
-                <div className="mb-3 rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3 text-xs font-semibold text-zinc-100">
-                  <label className="mr-2 uppercase tracking-wide text-zinc-400">Man target</label>
-                  <select
-                    className="rounded-md border border-zinc-600 bg-black px-2 py-1 text-xs font-semibold text-zinc-100"
-                    value={currentSelected.manTargetId}
-                    onChange={(e) => setManTarget(e.target.value)}
-                  >
-                    {offensivePlayers.filter((p) => ELIGIBLE_ROLES.has(p.role)).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-              <AssignmentPanel
-                selectedPlayer={currentSelected}
-                phase={phase}
-                activeAssignment={activeAssignment}
-                setAssignment={setAssignment}
-                clearPath={clearPath}
-                lockPhase={lockPhase}
-              />
-            </div>
-          )}
         </div>
-      </div>
 
-      <section className="w-full px-2 py-2">
-        <Field
-          players={players}
-          selectedPlayerId={selectedPlayerId}
-          ballSpotYard={situation.ballSpotYard}
-          interactive={isInteractive}
-          hiddenPathTeams={phase === 'pass-device' || phase === 'defense-design' ? ['offense'] : []}
-          onSelectPlayer={handleSelectPlayer}
-          onMovePlayer={movePlayer}
-          onAppendPathPoint={appendPathPoint}
-        />
-
-        <div className="grid grid-cols-2 gap-2 px-2 text-xs text-zinc-200 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-11">
-          {[...offensivePlayers, ...defensivePlayers].map((player) => (
-            <PlayerPiece
-              key={player.id}
-              player={player}
-              isSelected={player.id === selectedPlayerId}
-              onClick={handleSelectPlayer}
-            />
-          ))}
+        <div className="min-h-0 flex-1">
+          <Field
+            players={players}
+            selectedPlayerId={selectedPlayerId}
+            ballSpotYard={situation.ballSpotYard}
+            interactive={isInteractive}
+            editableTeam={phase === 'offense-design' ? 'offense' : phase === 'defense-design' ? 'defense' : undefined}
+            hiddenPathTeams={phase === 'pass-device' || phase === 'defense-design' ? ['offense'] : []}
+            onSelectPlayer={handleSelectPlayer}
+            onMovePlayer={movePlayer}
+            onAppendPathPoint={appendPathPoint}
+          />
         </div>
       </section>
 
