@@ -9,13 +9,13 @@ type RevealOverlayProps = {
 
 export function RevealOverlay({ title, subtitle, actionLabel, onAction }: RevealOverlayProps) {
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/85">
-      <div className="max-w-md rounded-lg border border-white/20 bg-slate-900/90 p-8 text-center shadow-2xl">
-        <h2 className="text-3xl font-bold text-chalk">{title}</h2>
-        {subtitle ? <p className="mt-3 text-sm text-slate-300">{subtitle}</p> : null}
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-[2px]">
+      <div className="max-w-lg rounded-2xl border border-white/30 bg-black/95 p-10 text-center shadow-[0_24px_80px_rgba(0,0,0,0.7)]">
+        <h2 className="text-3xl font-black tracking-tight text-white">{title}</h2>
+        {subtitle ? <p className="mt-3 text-sm text-zinc-300">{subtitle}</p> : null}
         {actionLabel && onAction ? (
           <button
-            className="mt-6 rounded bg-accent px-5 py-2 font-semibold text-black hover:bg-lime-300"
+            className="mt-7 rounded-md border border-white bg-white px-6 py-2.5 text-sm font-bold uppercase tracking-wide text-black transition hover:bg-zinc-200"
             onClick={onAction}
           >
             {actionLabel}

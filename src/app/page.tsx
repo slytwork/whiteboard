@@ -27,49 +27,31 @@ const clonePlayers = (players: Player[]): Player[] => players.map((p) => ({ ...p
 const createRoster = (situation: Situation): Player[] => {
   const los = situation.ballSpotYard;
 
-  const offense: Player[] = [
-    { id: 'qb', label: 'QB', team: 'offense', role: 'QB', position: { x: 26, y: los - 4 }, assignment: 'none', path: [] },
-    { id: 'rb', label: 'RB', team: 'offense', role: 'RB', position: { x: 29, y: los - 6 }, assignment: 'none', path: [] },
-    ...['LT', 'LG', 'C', 'RG', 'RT'].map((role, idx) => ({
-      id: role.toLowerCase(), label: role, team: 'offense' as const, role, position: { x: 22 + idx * 2, y: los - 1 }, assignment: 'none' as const, path: []
-    })),
-    { id: 'wr1', label: 'WR1', team: 'offense', role: 'WR', position: { x: 8, y: los - 2 }, assignment: 'none', path: [] },
-    { id: 'wr2', label: 'WR2', team: 'offense', role: 'WR', position: { x: 44, y: los - 2 }, assignment: 'none', path: [] },
-    { id: 'wr3', label: 'WR3', team: 'offense', role: 'WR', position: { x: 4, y: los - 4 }, assignment: 'none', path: [] },
-    { id: 'te', label: 'TE', team: 'offense', role: 'TE', position: { x: 36, y: los - 1 }, assignment: 'none', path: [] }
-  ];
+  const qb: Player = { id: 'qb', label: 'QB', team: 'offense', role: 'QB', position: { x: 26, y: los - 4 }, assignment: 'none', path: [] };
+  const rb: Player = { id: 'rb', label: 'RB', team: 'offense', role: 'RB', position: { x: 29, y: los - 6 }, assignment: 'none', path: [] };
+  const lt: Player = { id: 'lt', label: 'LT', team: 'offense', role: 'LT', position: { x: 22, y: los - 1 }, assignment: 'none', path: [] };
+  const lg: Player = { id: 'lg', label: 'LG', team: 'offense', role: 'LG', position: { x: 24, y: los - 1 }, assignment: 'none', path: [] };
+  const c: Player = { id: 'c', label: 'C', team: 'offense', role: 'C', position: { x: 26, y: los - 1 }, assignment: 'none', path: [] };
+  const rg: Player = { id: 'rg', label: 'RG', team: 'offense', role: 'RG', position: { x: 28, y: los - 1 }, assignment: 'none', path: [] };
+  const rt: Player = { id: 'rt', label: 'RT', team: 'offense', role: 'RT', position: { x: 30, y: los - 1 }, assignment: 'none', path: [] };
+  const wr1: Player = { id: 'wr1', label: 'WR1', team: 'offense', role: 'WR', position: { x: 8, y: los - 2 }, assignment: 'none', path: [] };
+  const wr2: Player = { id: 'wr2', label: 'WR2', team: 'offense', role: 'WR', position: { x: 44, y: los - 2 }, assignment: 'none', path: [] };
+  const wr3: Player = { id: 'wr3', label: 'WR3', team: 'offense', role: 'WR', position: { x: 4, y: los - 4 }, assignment: 'none', path: [] };
+  const te: Player = { id: 'te', label: 'TE', team: 'offense', role: 'TE', position: { x: 36, y: los - 1 }, assignment: 'none', path: [] };
 
-  const defense: Player[] = [
-    ...['DE', 'DT1', 'DT2', 'DE2'].map((role, idx) => ({
-      id: `dl${idx + 1}`,
-      label: role,
-      team: 'defense' as const,
-      role: 'DL',
-      position: { x: 20 + idx * 4, y: los + 1 },
-      assignment: 'none' as const,
-      path: []
-    })),
-    ...['LB1', 'LB2', 'LB3'].map((label, idx) => ({
-      id: `lb${idx + 1}`,
-      label,
-      team: 'defense' as const,
-      role: 'LB',
-      position: { x: 20 + idx * 6, y: los + 4 },
-      assignment: 'none' as const,
-      path: []
-    })),
-    ...['CB1', 'S1', 'S2', 'CB2'].map((label, idx) => ({
-      id: `db${idx + 1}`,
-      label,
-      team: 'defense' as const,
-      role: 'DB',
-      position: { x: 8 + idx * 12, y: los + 7 },
-      assignment: 'none' as const,
-      path: []
-    }))
-  ];
+  const dl1: Player = { id: 'dl1', label: 'DE', team: 'defense', role: 'DL', position: { x: 20, y: los + 1 }, assignment: 'none', path: [] };
+  const dl2: Player = { id: 'dl2', label: 'DT1', team: 'defense', role: 'DL', position: { x: 24, y: los + 1 }, assignment: 'none', path: [] };
+  const dl3: Player = { id: 'dl3', label: 'DT2', team: 'defense', role: 'DL', position: { x: 28, y: los + 1 }, assignment: 'none', path: [] };
+  const dl4: Player = { id: 'dl4', label: 'DE2', team: 'defense', role: 'DL', position: { x: 32, y: los + 1 }, assignment: 'none', path: [] };
+  const lb1: Player = { id: 'lb1', label: 'LB1', team: 'defense', role: 'LB', position: { x: 20, y: los + 4 }, assignment: 'none', path: [] };
+  const lb2: Player = { id: 'lb2', label: 'LB2', team: 'defense', role: 'LB', position: { x: 26, y: los + 4 }, assignment: 'none', path: [] };
+  const lb3: Player = { id: 'lb3', label: 'LB3', team: 'defense', role: 'LB', position: { x: 32, y: los + 4 }, assignment: 'none', path: [] };
+  const db1: Player = { id: 'db1', label: 'CB1', team: 'defense', role: 'DB', position: { x: 8, y: los + 7 }, assignment: 'none', path: [] };
+  const db2: Player = { id: 'db2', label: 'S1', team: 'defense', role: 'DB', position: { x: 20, y: los + 7 }, assignment: 'none', path: [] };
+  const db3: Player = { id: 'db3', label: 'S2', team: 'defense', role: 'DB', position: { x: 32, y: los + 7 }, assignment: 'none', path: [] };
+  const db4: Player = { id: 'db4', label: 'CB2', team: 'defense', role: 'DB', position: { x: 44, y: los + 7 }, assignment: 'none', path: [] };
 
-  return [...offense, ...defense];
+  return [qb, rb, lt, lg, c, rg, rt, wr1, wr2, wr3, te, dl1, dl2, dl3, dl4, lb1, lb2, lb3, db1, db2, db3, db4];
 };
 
 export default function Home() {
@@ -176,7 +158,7 @@ export default function Home() {
     const startPlayers = clonePlayers(players);
     initialPositionsRef.current = Object.fromEntries(startPlayers.map((p) => [p.id, { ...p.position }]));
 
-    const duration = 2200;
+    const duration = 3000;
     const start = performance.now();
 
     const tick = (now: number) => {
@@ -207,12 +189,9 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const newOffenseTotal = offenseWins;
-    const newDefenseTotal = defenseWins;
-
-    if (newOffenseTotal >= 3 || newDefenseTotal >= 3) {
+    if (offenseWins >= 3 || defenseWins >= 3) {
       setPhase('match-over');
-      setResultMessage(newOffenseTotal >= 3 ? 'Offense wins the match 3 plays to glory.' : 'Defense stonewalls the match and wins.');
+      setResultMessage(offenseWins >= 3 ? 'Offense wins the match 3 plays to glory.' : 'Defense stonewalls the match and wins.');
       return;
     }
 
@@ -242,13 +221,17 @@ export default function Home() {
   const defensivePlayers = players.filter((p) => p.team === 'defense');
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-board to-black">
+    <main className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black">
       <Scoreboard situation={situation} offenseWins={offenseWins} defenseWins={defenseWins} onReset={resetMatch} />
 
-      <section className="mx-auto max-w-[1400px] px-2 py-2">
-        <div className="mb-2 rounded border border-white/10 bg-black/30 px-3 py-2 text-xs text-slate-300">
-          {situation.description} • Offense remains on offense all match. First side to 3 round wins takes it.
+      <section className="w-full px-2 py-2">
+        <div className="mb-2 rounded-lg border border-zinc-700 bg-zinc-950/80 px-4 py-3 text-xs font-semibold text-zinc-300">
+          {situation.description} • Shared-device duel. First side to 3 round wins takes the match.
         </div>
+
+        {phase === 'animating' ? (
+          <div className="px-3 pb-1 text-center text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">Simultaneous Reveal In Progress</div>
+        ) : null}
 
         <Field
           players={players}
@@ -260,7 +243,7 @@ export default function Home() {
           onAppendPathPoint={appendPathPoint}
         />
 
-        <div className="grid grid-cols-2 gap-2 px-2 text-xs text-slate-300 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+        <div className="grid grid-cols-2 gap-2 px-2 text-xs text-zinc-200 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-11">
           {[...offensivePlayers, ...defensivePlayers].map((player) => (
             <PlayerPiece
               key={player.id}
@@ -275,10 +258,10 @@ export default function Home() {
       {(phase === 'offense-design' || phase === 'defense-design') && (
         <>
           {currentSelected?.assignment === 'man' ? (
-            <div className="mx-4 mt-2 rounded border border-sky-300/30 bg-sky-950/30 p-2 text-xs text-sky-100">
+            <div className="mx-4 mt-2 rounded border border-zinc-500 bg-zinc-900 p-2 text-xs font-semibold text-zinc-100">
               Man target:
               <select
-                className="ml-2 rounded bg-black/40 px-2 py-1"
+                className="ml-2 rounded border border-zinc-600 bg-black px-2 py-1"
                 value={currentSelected.manTargetId}
                 onChange={(e) => setManTarget(e.target.value)}
               >
@@ -309,9 +292,8 @@ export default function Home() {
         />
       )}
 
-      {phase === 'animating' && <RevealOverlay title="Simultaneous Reveal" subtitle="Executing movement..." />}
       {phase === 'discussion' && (
-        <RevealOverlay title={resultMessage} subtitle={`Discuss the rep. Next round in ${discussionSeconds}s`} />
+        <RevealOverlay title={resultMessage} subtitle={`Discussion window: ${discussionSeconds}s remaining`} />
       )}
       {phase === 'match-over' && (
         <RevealOverlay title={resultMessage} subtitle="Reset to start a new match." actionLabel="Play Again" onAction={resetMatch} />

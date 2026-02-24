@@ -9,14 +9,14 @@ type PlayerPieceProps = {
 };
 
 const assignmentColor: Record<AssignmentType, string> = {
-  none: 'text-slate-300',
-  run: 'text-amber-300',
-  'pass-route': 'text-lime-300',
-  block: 'text-orange-300',
-  man: 'text-sky-300',
-  zone: 'text-cyan-300',
-  blitz: 'text-rose-300',
-  contain: 'text-violet-300'
+  none: 'text-zinc-200',
+  run: 'text-white',
+  'pass-route': 'text-zinc-100',
+  block: 'text-zinc-300',
+  man: 'text-zinc-100',
+  zone: 'text-zinc-300',
+  blitz: 'text-white',
+  contain: 'text-zinc-300'
 };
 
 export function PlayerPiece({ player, isSelected, onClick }: PlayerPieceProps) {
@@ -24,11 +24,9 @@ export function PlayerPiece({ player, isSelected, onClick }: PlayerPieceProps) {
     <button
       type="button"
       onClick={() => onClick(player.id)}
-      className={`rounded-full border px-2 py-1 text-xs font-semibold transition ${
-        player.team === 'offense'
-          ? 'border-amber-200 bg-amber-100/15'
-          : 'border-sky-200 bg-sky-200/15'
-      } ${isSelected ? 'ring-2 ring-accent' : 'hover:opacity-80'} ${assignmentColor[player.assignment]}`}
+      className={`rounded-md border px-2 py-1.5 text-xs font-bold transition ${
+        player.team === 'offense' ? 'border-white/70 bg-white/10' : 'border-zinc-500 bg-zinc-800/70'
+      } ${isSelected ? 'ring-2 ring-white' : 'hover:border-white/90 hover:bg-zinc-700/80'} ${assignmentColor[player.assignment]}`}
       title={`${player.label} (${player.role}) — ${player.assignment}`}
     >
       {player.label}

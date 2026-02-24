@@ -9,12 +9,12 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        chalk: '#f8fafc',
-        board: '#081c15',
-        boardMid: '#12372a',
-        accent: '#84cc16',
-        offense: '#fde68a',
-        defense: '#93c5fd'
+        chalk: '#ffffff',
+        board: '#000000',
+        boardMid: '#111111',
+        accent: '#ffffff',
+        offense: '#ffffff',
+        defense: '#71717a'
       }
     }
   },

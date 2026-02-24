@@ -11,18 +11,18 @@ type ScoreboardProps = {
 
 export function Scoreboard({ situation, offenseWins, defenseWins, onReset }: ScoreboardProps) {
   return (
-    <div className="flex items-center justify-between border-b border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-200">
+    <div className="flex items-center justify-between border-b border-zinc-700 bg-black px-4 py-3 text-sm text-zinc-200">
       <div>
-        <p className="text-xs uppercase tracking-widest text-slate-400">Situation</p>
-        <p className="font-semibold text-chalk">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">Situation</p>
+        <p className="font-black text-white">
           {situation.label} • Need {situation.requiredYards} yds
         </p>
       </div>
       <div className="text-center">
-        <p className="text-xs uppercase tracking-widest text-slate-400">Score</p>
-        <p className="font-semibold text-chalk">Offense {offenseWins} - {defenseWins} Defense</p>
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">Score</p>
+        <p className="font-black text-white">Offense {offenseWins} - {defenseWins} Defense</p>
       </div>
-      <button onClick={onReset} className="rounded border border-white/20 px-3 py-1 hover:bg-white/10">
+      <button onClick={onReset} className="rounded border border-zinc-500 px-3 py-1 font-bold hover:border-white hover:bg-zinc-800">
         Reset Match
       </button>
     </div>

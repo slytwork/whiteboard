@@ -7,5 +7,5 @@
 }
 
 body {
-  @apply bg-board text-chalk antialiased;
+  @apply bg-black text-white antialiased;
 }
