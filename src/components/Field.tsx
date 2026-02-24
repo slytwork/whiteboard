@@ -25,11 +25,22 @@ type FieldProps = {
 const toSvg = (point: Point) => ({ x: yardsToPx(point.x), y: yardsToPx(point.y) });
 
 const getSnappedPointFromPointer = (svg: SVGSVGElement, clientX: number, clientY: number): Point => {
-  const pt = svg.createSVGPoint();
-  pt.x = clientX;
-  pt.y = clientY;
-  const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-  return snapPointToYard({ x: transformed.x / YARD_TO_PX, y: transformed.y / YARD_TO_PX });
+  const ctm = svg.getScreenCTM();
+  if (ctm) {
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const transformed = pt.matrixTransform(ctm.inverse());
+    return snapPointToYard({ x: transformed.x / YARD_TO_PX, y: transformed.y / YARD_TO_PX });
+  }
+
+  const rect = svg.getBoundingClientRect();
+  const relativeX = (clientX - rect.left) / rect.width;
+  const relativeY = (clientY - rect.top) / rect.height;
+  return snapPointToYard({
+    x: relativeX * (FIELD_WIDTH_PX / YARD_TO_PX),
+    y: relativeY * (FIELD_LENGTH_PX / YARD_TO_PX)
+  });
 };
 
 export function Field({
@@ -50,11 +61,11 @@ export function Field({
   };
 
   return (
-    <div className="relative w-full px-2 py-2">
+    <div className="relative left-1/2 w-screen -translate-x-1/2 px-0 py-2">
       <svg
         viewBox={`0 0 ${FIELD_WIDTH_PX} ${FIELD_LENGTH_PX}`}
-        preserveAspectRatio="xMidYMid meet"
-        className="h-[calc(100vh-270px)] min-h-[560px] w-full rounded-xl border border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
+        preserveAspectRatio="none"
+        className="h-[calc(100vh-250px)] min-h-[560px] w-screen rounded-none border-y border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
         onPointerDown={handleFieldClick}
       >
         <rect x={0} y={0} width={FIELD_WIDTH_PX} height={FIELD_LENGTH_PX} fill="#111111" />
