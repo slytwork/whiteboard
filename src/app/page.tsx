@@ -31,9 +31,9 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: '/whiteboard-logo-poweredby.svg',
+        url: '/whiteboard-seo-fallback.png',
         width: 1200,
-        height: 630,
+        height: 640,
         alt: 'Whiteboard football play drawing app'
       }
     ]
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     title: 'Whiteboard | Draw Football Plays and Challenge a Friend',
     description:
       'Quickly draw football plays, assign routes, and battle head-to-head in a shared-device play design duel.',
-    images: ['/whiteboard-logo-poweredby.svg']
+    images: ['/whiteboard-seo-fallback.png']
   },
   robots: {
     index: true,
