@@ -20,6 +20,7 @@ type FieldProps = {
   ballSpotYard: number;
   interactive: boolean;
   editableTeam?: Team;
+  pathStartOverrides?: Record<string, Point>;
   hiddenPathTeams?: Team[];
   onSelectPlayer: (id: string) => void;
   onMovePlayer: (id: string, point: Point) => void;
@@ -54,6 +55,7 @@ export function Field({
   ballSpotYard,
   interactive,
   editableTeam,
+  pathStartOverrides,
   hiddenPathTeams = [],
   onSelectPlayer,
   onMovePlayer,
@@ -170,7 +172,8 @@ export function Field({
 
         {players.map((player) => {
           const p = toSvg(player.position);
-          const pathPoints = [player.position, ...player.path].map(toSvg);
+          const pathStart = pathStartOverrides?.[player.id] ?? player.position;
+          const pathPoints = [pathStart, ...player.path].map(toSvg);
           const pathD = pathPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
           const isSelected = player.id === selectedPlayerId;
           const isEligible = player.team === 'offense' && offenseEligibleRoles.has(player.role);

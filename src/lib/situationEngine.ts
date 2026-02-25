@@ -30,6 +30,8 @@ const SITUATIONS: Situation[] = [
   }
 ];
 
+export const DEFAULT_SITUATION: Situation = SITUATIONS[0];
+
 export const randomSituation = (previousId?: string): Situation => {
   const pool = previousId ? SITUATIONS.filter((s) => s.id !== previousId) : SITUATIONS;
   return pool[Math.floor(Math.random() * pool.length)];
