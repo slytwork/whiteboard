@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AssignmentPanel } from "@/components/AssignmentPanel";
 import { Field } from "@/components/Field";
 import { PlayerPiece } from "@/components/PlayerPiece";
@@ -353,14 +353,21 @@ export default function Home() {
   const [defenseWins, setDefenseWins] = useState(0);
   const [resultMessage, setResultMessage] = useState("");
   const [queuedRoundSituation, setQueuedRoundSituation] = useState<Situation>();
+  const [pathStartOverrides, setPathStartOverrides] = useState<
+    Record<string, Point> | undefined
+  >();
+  const [lastOffensePlay, setLastOffensePlay] = useState<
+    { players: Player[]; losYard: number } | undefined
+  >();
+  const [lastDefensePlay, setLastDefensePlay] = useState<
+    { players: Player[]; losYard: number } | undefined
+  >();
 
   const initialPositionsRef = useRef<Record<string, Point>>({});
   const roundStartFormationRef = useRef<{
     players: Player[];
     losYard: number;
   }>();
-  const lastOffensePlayRef = useRef<{ players: Player[]; losYard: number }>();
-  const lastDefensePlayRef = useRef<{ players: Player[]; losYard: number }>();
 
   const currentSelected = useMemo(
     () => players.find((p) => p.id === selectedPlayerId),
@@ -383,6 +390,7 @@ export default function Home() {
         : createRoster(fresh);
     });
     setSelectedPlayerId(undefined);
+    setActiveAssignment(undefined);
     setPhase("offense-design");
   };
 
@@ -394,9 +402,11 @@ export default function Home() {
     setSituation(fresh);
     setPlayers(createRoster(fresh));
     roundStartFormationRef.current = undefined;
-    lastOffensePlayRef.current = undefined;
-    lastDefensePlayRef.current = undefined;
+    setLastOffensePlay(undefined);
+    setLastDefensePlay(undefined);
+    setPathStartOverrides(undefined);
     setSelectedPlayerId(undefined);
+    setActiveAssignment(undefined);
     setPhase("offense-design");
   };
 
@@ -516,21 +526,32 @@ export default function Home() {
     });
 
     if (successfulReceiver) {
-      setOffenseWins((prev) => prev + 1);
+      const nextOffenseWins = offenseWins + 1;
+      setOffenseWins(nextOffenseWins);
       const winner = offenseEligible.find(
         (p) => p.id === successfulReceiver.offensiveId,
       );
-      setResultMessage(
-        `Offense scores! ${winner?.label ?? "Receiver"} got open beyond the sticks.`,
-      );
+      if (nextOffenseWins >= 3) {
+        setResultMessage("Offense wins the match 3 plays to glory.");
+        setActiveAssignment(undefined);
+        setPhase("match-over");
+        return;
+      }
+      setResultMessage(`Offense scores! ${winner?.label ?? "Receiver"} got open beyond the sticks.`);
     } else {
-      setDefenseWins((prev) => prev + 1);
-      setResultMessage(
-        "Defense wins the rep. No eligible receiver finished open past the line to gain.",
-      );
+      const nextDefenseWins = defenseWins + 1;
+      setDefenseWins(nextDefenseWins);
+      if (nextDefenseWins >= 3) {
+        setResultMessage("Defense stonewalls the match and wins.");
+        setActiveAssignment(undefined);
+        setPhase("match-over");
+        return;
+      }
+      setResultMessage("Defense wins the rep. No eligible receiver finished open past the line to gain.");
     }
 
-    setPhase("evaluation");
+    setActiveAssignment(undefined);
+    setPhase("discussion");
   };
 
   const animateReveal = () => {
@@ -544,15 +565,19 @@ export default function Home() {
       setResultMessage(
         `${preSnapPenalty.label} on the ${preSnapPenalty.team}. Ball moved back 5 yards.`,
       );
+      setActiveAssignment(undefined);
       setPhase("discussion");
       return;
     }
 
+    setActiveAssignment(undefined);
     setPhase("animating");
     const startPlayers = clonePlayers(players);
-    initialPositionsRef.current = Object.fromEntries(
+    const startPositions = Object.fromEntries(
       startPlayers.map((p) => [p.id, { ...p.position }]),
     );
+    initialPositionsRef.current = startPositions;
+    setPathStartOverrides(startPositions);
 
     const duration = 3000;
     const start = performance.now();
@@ -591,13 +616,14 @@ export default function Home() {
 
   const lockPhase = () => {
     if (phase === "offense-design") {
-      lastOffensePlayRef.current = {
+      setLastOffensePlay({
         players: clonePlayers(
           players.filter((player) => player.team === "offense"),
         ),
         losYard: situation.ballSpotYard,
-      };
+      });
       setSelectedPlayerId(undefined);
+      setActiveAssignment(undefined);
       setPhase("pass-device");
       return;
     }
@@ -608,36 +634,16 @@ export default function Home() {
         players: snapshot,
         losYard: situation.ballSpotYard,
       };
-      lastDefensePlayRef.current = {
+      setLastDefensePlay({
         players: clonePlayers(
           players.filter((player) => player.team === "defense"),
         ),
         losYard: situation.ballSpotYard,
-      };
+      });
       setSelectedPlayerId(undefined);
       animateReveal();
     }
   };
-
-  useEffect(() => {
-    if (offenseWins >= 3 || defenseWins >= 3) {
-      setPhase("match-over");
-      setResultMessage(
-        offenseWins >= 3
-          ? "Offense wins the match 3 plays to glory."
-          : "Defense stonewalls the match and wins.",
-      );
-      return;
-    }
-
-    if (phase === "evaluation") {
-      setPhase("discussion");
-    }
-  }, [offenseWins, defenseWins, phase]);
-
-  useEffect(() => {
-    setActiveAssignment(undefined);
-  }, [phase]);
 
   const advanceToNextRound = () => {
     if (phase !== "discussion") return;
@@ -646,10 +652,7 @@ export default function Home() {
   };
 
   const applySavedTeamPlay = (team: "offense" | "defense") => {
-    const saved =
-      team === "offense"
-        ? lastOffensePlayRef.current
-        : lastDefensePlayRef.current;
+    const saved = team === "offense" ? lastOffensePlay : lastDefensePlay;
     if (!saved) return;
 
     setPlayers((prev) =>
@@ -743,7 +746,7 @@ export default function Home() {
                   clearPath={clearPath}
                   lockPhase={lockPhase}
                 />
-                {phase === "offense-design" && lastOffensePlayRef.current ? (
+                {phase === "offense-design" && lastOffensePlay ? (
                   <button
                     onClick={() => applySavedTeamPlay("offense")}
                     className="w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
@@ -751,7 +754,7 @@ export default function Home() {
                     Run Same Offense Play
                   </button>
                 ) : null}
-                {phase === "defense-design" && lastDefensePlayRef.current ? (
+                {phase === "defense-design" && lastDefensePlay ? (
                   <button
                     onClick={() => applySavedTeamPlay("defense")}
                     className="w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
@@ -835,7 +838,7 @@ export default function Home() {
             }
             pathStartOverrides={
               phase === "animating" || phase === "discussion"
-                ? initialPositionsRef.current
+                ? pathStartOverrides
                 : undefined
             }
             hiddenPathTeams={
@@ -855,7 +858,10 @@ export default function Home() {
           title="Pass the device to the Defense"
           subtitle="Defense sets assignments and snapped paths next."
           actionLabel="Defense Ready"
-          onAction={() => setPhase("defense-design")}
+          onAction={() => {
+            setActiveAssignment(undefined);
+            setPhase("defense-design");
+          }}
         />
       )}
 
