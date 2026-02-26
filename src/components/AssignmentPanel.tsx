@@ -6,6 +6,7 @@ type AssignmentPanelProps = {
   selectedPlayer?: Player;
   phase: string;
   activeAssignment?: AssignmentType;
+  offenseRunCarrierId?: string;
   setAssignment: (assignment: AssignmentType) => void;
   clearPath: () => void;
   lockPhase: () => void;
@@ -14,9 +15,21 @@ type AssignmentPanelProps = {
 const OFFENSE_ASSIGNMENTS: AssignmentType[] = ['run', 'pass-route', 'block'];
 const DEFENSE_ASSIGNMENTS: AssignmentType[] = ['man', 'zone', 'blitz', 'contain'];
 
-export function AssignmentPanel({ selectedPlayer, phase, activeAssignment, setAssignment, clearPath, lockPhase }: AssignmentPanelProps) {
+export function AssignmentPanel({
+  selectedPlayer,
+  phase,
+  activeAssignment,
+  offenseRunCarrierId,
+  setAssignment,
+  clearPath,
+  lockPhase
+}: AssignmentPanelProps) {
   const isOffensePhase = phase === 'offense-design';
   const assignments = isOffensePhase ? OFFENSE_ASSIGNMENTS : DEFENSE_ASSIGNMENTS;
+  const isRunLockedForSelected =
+    isOffensePhase &&
+    Boolean(offenseRunCarrierId) &&
+    selectedPlayer?.id !== offenseRunCarrierId;
 
   return (
     <div className="rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3">
@@ -36,12 +49,18 @@ export function AssignmentPanel({ selectedPlayer, phase, activeAssignment, setAs
         {assignments.map((assignment) => (
           <button
             key={assignment}
+            disabled={!selectedPlayer || (assignment === 'run' && isRunLockedForSelected)}
             onClick={() => setAssignment(assignment)}
             className={`rounded-md border px-3 py-1 text-xs font-bold uppercase tracking-wide transition ${
               assignment === activeAssignment
                 ? 'border-white bg-white text-black'
                 : 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:border-white hover:bg-zinc-800'
-            }`}
+            } ${!selectedPlayer || (assignment === 'run' && isRunLockedForSelected) ? 'cursor-not-allowed opacity-40 hover:border-zinc-600 hover:bg-zinc-900' : ''}`}
+            title={
+              assignment === 'run' && isRunLockedForSelected
+                ? 'Only the selected run carrier can keep the run assignment.'
+                : undefined
+            }
           >
             {assignment.replace('-', ' ')}
           </button>

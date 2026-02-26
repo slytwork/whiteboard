@@ -86,18 +86,18 @@ const defenseTemplates: PlayTemplate[] = [
         lb1: { assignment: "zone", path: [from(p.lb1, -5.5, 2.4)] },
         lb2: { assignment: "zone", path: [from(p.lb2, 0, 2.6)] },
         lb3: { assignment: "zone", path: [from(p.lb3, 5.5, 2.4)] },
-        db1: { assignment: "zone", path: [from(p.db1, 0, -12)] },
+        db1: { assignment: "zone", path: [from(p.db1, 0, -9)] },
         db2: {
           assignment: "zone",
           path: [
             clampFieldPoint({
               x: 26.65,
-              y: (p.db2?.position.y ?? 0) - 11,
+              y: (p.db2?.position.y ?? 0) - 9,
             }),
           ],
         },
         db3: { assignment: "zone", path: [from(p.db3, 0, 2.2)] },
-        db4: { assignment: "zone", path: [from(p.db4, 0, -12)] },
+        db4: { assignment: "zone", path: [from(p.db4, 0, -9)] },
       };
     },
   },

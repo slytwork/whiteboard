@@ -19,6 +19,7 @@ type FieldProps = {
   players: Player[];
   selectedPlayerId?: string;
   ballSpotYard: number;
+  requiredYards: number;
   interactive: boolean;
   editableTeam?: Team;
   pathStartOverrides?: Record<string, Point>;
@@ -56,6 +57,7 @@ export function Field({
   players,
   selectedPlayerId,
   ballSpotYard,
+  requiredYards,
   interactive,
   editableTeam,
   pathStartOverrides,
@@ -66,6 +68,7 @@ export function Field({
   onMovePlayer,
   onAppendPathPoint
 }: FieldProps) {
+  const lineToGainYard = Math.max(0, ballSpotYard - requiredYards);
   const selected = players.find((p) => p.id === selectedPlayerId);
   const manLinks = players
     .filter(
@@ -83,14 +86,18 @@ export function Field({
   const dynamicViewBox = useMemo(() => {
     const minVisibleHeight = yardsToPx(60);
     const edgePadding = yardsToPx(10);
+    const defenseSideOffset = yardsToPx(10);
     const playerYs = players.map((player) => yardsToPx(player.position.y));
     const minPlayerY = playerYs.length ? Math.min(...playerYs) : yardsToPx(ballSpotYard);
     const maxPlayerY = playerYs.length ? Math.max(...playerYs) : yardsToPx(ballSpotYard);
     const playerSpan = Math.max(0, maxPlayerY - minPlayerY) + edgePadding * 2;
     const viewHeight = Math.min(FIELD_LENGTH_PX, Math.max(minVisibleHeight, playerSpan));
-    const desiredCenterY = yardsToPx(ballSpotYard);
+    const desiredCenterY = yardsToPx(ballSpotYard) - defenseSideOffset;
     const maxTop = FIELD_LENGTH_PX - viewHeight;
-    const top = Math.max(0, Math.min(maxTop, desiredCenterY - viewHeight / 2));
+    const baseTop = Math.max(0, Math.min(maxTop, desiredCenterY - viewHeight / 2));
+    const minimumOffenseSideVisibleY = yardsToPx(ballSpotYard + 5);
+    const minTopForOffenseSide = minimumOffenseSideVisibleY - viewHeight;
+    const top = Math.max(0, Math.min(maxTop, Math.max(baseTop, minTopForOffenseSide)));
     return { x: 0, y: top, width: FIELD_WIDTH_PX, height: viewHeight };
   }, [ballSpotYard, players]);
 
@@ -186,10 +193,18 @@ export function Field({
           x2={FIELD_WIDTH_PX}
           y1={yardsToPx(ballSpotYard)}
           y2={yardsToPx(ballSpotYard)}
-          stroke="#ffffff"
-          strokeDasharray="7 4"
+          stroke="#2563eb"
           strokeWidth={2.2}
           opacity={0.9}
+        />
+        <line
+          x1={0}
+          x2={FIELD_WIDTH_PX}
+          y1={yardsToPx(lineToGainYard)}
+          y2={yardsToPx(lineToGainYard)}
+          stroke="#facc15"
+          strokeWidth={2}
+          opacity={0.95}
         />
 
         {manLinks.map(({ defender, target }) => (
@@ -265,6 +280,8 @@ export function Field({
           const pathD = pathPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
           const isSelected = player.id === selectedPlayerId;
           const isEligible = player.team === 'offense' && offenseEligibleRoles.has(player.role);
+          const fieldTag = player.label;
+          const fieldTagFontSize = fieldTag.length >= 4 ? 4.2 : 5.25;
           const isManTargetCandidate = manTargetSelectionMode && isEligible;
           const isCurrentManTarget = isManTargetCandidate && selectedManTargetId === player.id;
           const isArrowAssignment =
@@ -343,8 +360,8 @@ export function Field({
                   stroke={isCurrentManTarget ? '#67e8f9' : isSelected ? '#ffffff' : '#09090b'}
                   strokeWidth={isSelected ? 2.25 : 1.5}
                 />
-                <text x={0} y={2.25} textAnchor="middle" fill={player.team === 'offense' ? '#09090b' : '#fafafa'} fontSize={5.25} fontWeight={800}>
-                  {player.role}
+                <text x={0} y={2.25} textAnchor="middle" fill={player.team === 'offense' ? '#09090b' : '#fafafa'} fontSize={fieldTagFontSize} fontWeight={800}>
+                  {fieldTag}
                 </text>
                 {isEligible ? <circle r={8.625} fill="none" stroke="#e4e4e7" strokeWidth={0.825} opacity={0.9} /> : null}
                 {isManTargetCandidate ? (

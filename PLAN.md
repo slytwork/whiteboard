@@ -3,6 +3,25 @@
 - [ ] Need to optimize the entire app for mobile so that it can be played on the go.
 - [x] Show the zone that a defender is covering and if an offensive player ends up in that zone, they are not considered open.
 - [x] Add man coverage as a defensive player assignment
-- [ ] Encorporate a football into the field of play, the quarterback should start with it and if there is a receiver that is not covered the football should travel to the open receiver to show where the completion is coming from.
-- [ ] The receiver names don't correspond to the labels on the position, so when a round is completed the open receiver is shown in the success message but we don't know which receiver that is (WR3 vs WR label)
-- [ ] The deep 1/3 zones for the DB's in cover 3 are pushed to far that it is extending pass the viewport. Also make sure the seems (around the hashes) are open in cover 3 so make the deep zones thinner so they don't cover those seems
+- [ ] Encorporate a football into the field of play, the quarterback should start with it and if there is a receiver that is not covered the football should travel to the open receiver to show where the completion is coming from. In a run play the quarterback should move to the running backs path and give the ball to the runner. This will update the tackling mechanic to end the play when the defensive player reaches the player who has the ball.
+- [ ] Lets add post path running that just makes the ball carrier run straight until tackled.
+- [x] The receiver names don't correspond to the labels on the position, so when a round is completed the open receiver is shown in the success message but we don't know which receiver that is (WR3 vs WR label)
+- [x] Let's make sure the seems (around the hashes) are open in cover 3 so make the deep zones thinner so they don't cover those seems
+- [x] In man coverage the defenders immediately snap to the position of the skill player they are guarding and they should travel from there starting position at a consistent speed until they reach the viscinity of the player they are guarding and then they should stay close to that receiver with randomness. In man coverage, a receiver is considered open if the defensive player is in a state of randomness at the end of the play during the reveal
+- [x] Let's change the receivers to X,H,Y,Z and Y is the tight end. X is outside on the left, Z is outside on the right, H is the other slot receiver
+- [x] Lets make sure no zones ever extend outside of the viewport. Lets show 10yds more of the field behind the defense and remove 10yds of the field from the viewport behind the offense since you rarley draw plays going backwards.
+- [x] In zone coverage, if there are 2 receivers in a single zone, only count one of them as covered and the other uncovered as a defender can't typically guard 2 people at once.
+- [x] We need to be able to gain yards if a receiver is open before the first down marker so that the next down can increment and the amount of yards to gain for the first down is subtracted by how many yards were gained
+- [x] Lets show the first down line to gain visusally on the field with a yellow line.
+- [x] Lets show the line of scrimmage visusally on the field with a blue line.
+- [x] When a run play is called the only player we should pay attention to is the one whos assignment is "run". Lets make sure only 1 player can have a run assignment and everyone else must be block
+- [x] Lock the assignment buttons so once a run is chosen, offense can only pick block for everyone else in the UI (instead of auto-correcting after selection).
+- [x] Adding to this run game mechanics we need to add a "tackle" mechanic because when the player assigned to run if they pass a defender, we have to assume that the player has been tackled when the defensive player gets within the runners tackled radius which would immediately stop the yards gained where they come in contact with one another.
+- [x] When a defensive player is in zone coverage and 2 recievers reach that players zone, lets make the defensive player relate to one of them by going towards one of the 2 receivers in that zone by random. The other receiver that the defender doesn't move towards would be the one that is considered open.
+- [x] When a player who is running the ball all defenders should move towards the ball carrier to simulate a pursuit but they should go at a consistent speed to simulate running before the tackle
+- [x] The defensive player should not over take an offensive player but only be close to them when they are being blocked. RIght now the offensive player disappears because the defensive player is on top of the offensive player which would never happen, needs to be more realistic
+- [x] If a noffensive blocker is blocking a defensive player in pursuit, they cannot block a second player in pursuit.
+- [x] We need to slow down the pursuit speed, it is way faster than the movement of the offense and everyones speed should be consistent outside of the defensive linemen and the offensive linemen
+- [ ] We need the tackling mechanic to apply to pass plays as well. After the receiver catches the ball it should be similar to the running and tackling mechanic.
+- [ ] When a defender is pursuing the ball carrier and there is an offensive player with a blocking assignment should stop 1 defender who is pursuing. As soon as the first defender to reach the ball carrier without being blocked should stop the ball carrier and should stop all players assignments and should end the play.
+- [x] Let's add a replay button after the end of the play happens to view the reveal again before going to the next round.

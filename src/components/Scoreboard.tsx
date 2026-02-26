@@ -1,6 +1,6 @@
 'use client';
 
-import { Situation } from '@/lib/situationEngine';
+import { getDownAndDistanceLabel, Situation } from '@/lib/situationEngine';
 
 type ScoreboardProps = {
   situation: Situation;
@@ -15,7 +15,7 @@ export function Scoreboard({ situation, offenseWins, defenseWins, onReset }: Sco
       <div className="min-w-0">
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Situation</p>
         <p className="font-black text-white">
-          {situation.label} • Need {situation.requiredYards} yds
+          {getDownAndDistanceLabel(situation)} • Need {situation.requiredYards} yds
         </p>
       </div>
       <div className="rounded-md border border-zinc-700 bg-zinc-950/80 px-3 py-1 text-center">
