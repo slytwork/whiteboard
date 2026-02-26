@@ -17,8 +17,14 @@ import {
   Player,
 } from "@/lib/movementEngine";
 import {
+  applyPlayTemplate,
+  getPlayTemplatesForTeam,
+} from "@/lib/playTemplates";
+import {
   evaluateSeparation,
+  getOffenseCoveredByZones,
   getBlockedDefenderIds,
+  getZoneCoverageAreas,
 } from "@/lib/separationEngine";
 import {
   DEFAULT_SITUATION,
@@ -341,6 +347,8 @@ const createRoster = (situation: Situation): Player[] => {
 };
 
 export default function Home() {
+  const offenseTemplates = getPlayTemplatesForTeam("offense");
+  const defenseTemplates = getPlayTemplatesForTeam("defense");
   const [situation, setSituation] = useState<Situation>(DEFAULT_SITUATION);
   const [players, setPlayers] = useState<Player[]>(() =>
     createRoster(DEFAULT_SITUATION),
@@ -362,6 +370,12 @@ export default function Home() {
   const [lastDefensePlay, setLastDefensePlay] = useState<
     { players: Player[]; losYard: number } | undefined
   >();
+  const [selectedOffenseTemplateId, setSelectedOffenseTemplateId] = useState(
+    () => offenseTemplates[0]?.id ?? "",
+  );
+  const [selectedDefenseTemplateId, setSelectedDefenseTemplateId] = useState(
+    () => defenseTemplates[0]?.id ?? "",
+  );
 
   const initialPositionsRef = useRef<Record<string, Point>>({});
   const roundStartFormationRef = useRef<{
@@ -373,6 +387,13 @@ export default function Home() {
     () => players.find((p) => p.id === selectedPlayerId),
     [players, selectedPlayerId],
   );
+  const isManTargetSelectionMode =
+    phase === "defense-design" &&
+    currentSelected?.team === "defense" &&
+    currentSelected.assignment === "man";
+  const currentManTargetId = isManTargetSelectionMode
+    ? currentSelected.manTargetId
+    : undefined;
 
   const resetRound = (nextSituation?: Situation) => {
     const fresh = nextSituation ?? randomSituation(situation.id);
@@ -416,6 +437,15 @@ export default function Home() {
   const handleSelectPlayer = (id: string) => {
     const p = players.find((player) => player.id === id);
     if (!p) return;
+    if (
+      phase === "defense-design" &&
+      isManTargetSelectionMode &&
+      p.team === "offense" &&
+      ELIGIBLE_ROLES.has(p.role)
+    ) {
+      setManTarget(p.id);
+      return;
+    }
     if (phase === "offense-design" && p.team !== "offense") return;
     if (phase === "defense-design" && p.team !== "defense") return;
     setSelectedPlayerId(id);
@@ -427,6 +457,7 @@ export default function Home() {
           ? {
               ...player,
               assignment: activeAssignment,
+              path: activeAssignment === "man" ? [] : player.path,
               manTargetId:
                 activeAssignment === "man"
                   ? prev.find(
@@ -450,6 +481,7 @@ export default function Home() {
           ? {
               ...p,
               assignment,
+              path: assignment === "man" ? [] : p.path,
               manTargetId:
                 assignment === "man"
                   ? prev.find(
@@ -499,7 +531,13 @@ export default function Home() {
 
   const appendPathPoint = (id: string, point: Point) => {
     setPlayers((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, path: [...p.path, point] } : p)),
+      prev.map((p) =>
+        p.id === id
+          ? p.assignment === "man"
+            ? p
+            : { ...p, path: [...p.path, point] }
+          : p,
+      ),
     );
   };
 
@@ -516,13 +554,29 @@ export default function Home() {
     const activeDefenders = defenders.filter(
       (defender) => !blockedDefenderIds.has(defender.id),
     );
-    const separation = evaluateSeparation(offenseEligible, activeDefenders);
+    const coverageDefenders = activeDefenders.filter(
+      (defender) =>
+        defender.assignment === "man" || defender.assignment === "zone",
+    );
+    const zoneCoverages = getZoneCoverageAreas(
+      coverageDefenders,
+      situation.ballSpotYard,
+    );
+    const zoneCoveredOffenseIds = getOffenseCoveredByZones(
+      offenseEligible,
+      zoneCoverages,
+    );
+    const separation = evaluateSeparation(offenseEligible, coverageDefenders);
 
     const successfulReceiver = separation.find((res) => {
       const player = offenseEligible.find((p) => p.id === res.offensiveId);
       if (!player) return false;
       const gainedYards = situation.ballSpotYard - player.position.y;
-      return gainedYards >= situation.requiredYards && res.isOpen;
+      return (
+        gainedYards >= situation.requiredYards &&
+        res.isOpen &&
+        !zoneCoveredOffenseIds.has(player.id)
+      );
     });
 
     if (successfulReceiver) {
@@ -685,8 +739,31 @@ export default function Home() {
     );
   };
 
+  const applySelectedTemplate = (team: "offense" | "defense") => {
+    const templateId =
+      team === "offense" ? selectedOffenseTemplateId : selectedDefenseTemplateId;
+    if (!templateId) return;
+    setPlayers((prev) =>
+      applyPlayTemplate(prev, team, templateId, situation.ballSpotYard),
+    );
+  };
+
+  const applyTemplateById = (
+    team: "offense" | "defense",
+    templateId: string,
+  ) => {
+    if (!templateId) return;
+    setPlayers((prev) =>
+      applyPlayTemplate(prev, team, templateId, situation.ballSpotYard),
+    );
+  };
+
   const offensivePlayers = players.filter((p) => p.team === "offense");
   const defensivePlayers = players.filter((p) => p.team === "defense");
+  const visibleZoneCoverages =
+    phase === "defense-design" || phase === "animating" || phase === "discussion"
+      ? getZoneCoverageAreas(defensivePlayers, situation.ballSpotYard)
+      : [];
 
   return (
     <main className="h-screen overflow-hidden bg-gradient-to-b from-black via-zinc-950 to-black">
@@ -718,24 +795,87 @@ export default function Home() {
 
             {(phase === "offense-design" || phase === "defense-design") && (
               <>
+                {phase === "offense-design" ? (
+                  <div className="rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3">
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                      Offense Templates
+                    </p>
+                    <select
+                      className="w-full rounded-md border border-zinc-600 bg-black px-2 py-2 text-xs font-semibold text-zinc-100"
+                      value={selectedOffenseTemplateId}
+                      onChange={(e) => {
+                        const templateId = e.target.value;
+                        setSelectedOffenseTemplateId(templateId);
+                        applyTemplateById("offense", templateId);
+                      }}
+                    >
+                      {offenseTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-[11px] text-zinc-400">
+                      {offenseTemplates.find(
+                        (template) => template.id === selectedOffenseTemplateId,
+                      )?.description ?? "Select a template to seed assignments."}
+                    </p>
+                    <button
+                      onClick={() => applySelectedTemplate("offense")}
+                      className="mt-2 w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
+                    >
+                      Apply Offense Template
+                    </button>
+                  </div>
+                ) : null}
+                {phase === "defense-design" ? (
+                  <div className="rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3">
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                      Defense Templates
+                    </p>
+                    <select
+                      className="w-full rounded-md border border-zinc-600 bg-black px-2 py-2 text-xs font-semibold text-zinc-100"
+                      value={selectedDefenseTemplateId}
+                      onChange={(e) => {
+                        const templateId = e.target.value;
+                        setSelectedDefenseTemplateId(templateId);
+                        applyTemplateById("defense", templateId);
+                      }}
+                    >
+                      {defenseTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-[11px] text-zinc-400">
+                      {defenseTemplates.find(
+                        (template) => template.id === selectedDefenseTemplateId,
+                      )?.description ?? "Select a template to seed assignments."}
+                    </p>
+                    <button
+                      onClick={() => applySelectedTemplate("defense")}
+                      className="mt-2 w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
+                    >
+                      Apply Defense Template
+                    </button>
+                  </div>
+                ) : null}
                 {currentSelected?.assignment === "man" ? (
                   <div className="rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3 text-xs font-semibold text-zinc-100">
-                    <label className="mr-2 uppercase tracking-wide text-zinc-400">
+                    <p className="uppercase tracking-wide text-zinc-400">
                       Man target
-                    </label>
-                    <select
-                      className="rounded-md border border-zinc-600 bg-black px-2 py-1 text-xs font-semibold text-zinc-100"
-                      value={currentSelected.manTargetId}
-                      onChange={(e) => setManTarget(e.target.value)}
-                    >
-                      {offensivePlayers
-                        .filter((p) => ELIGIBLE_ROLES.has(p.role))
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.label}
-                          </option>
-                        ))}
-                    </select>
+                    </p>
+                    <p className="mt-1 text-[11px] font-medium text-zinc-300">
+                      Click an offensive skill player on the field or in the
+                      player list.
+                    </p>
+                    <p className="mt-2 text-[11px] font-bold text-cyan-300">
+                      Current:{" "}
+                      {offensivePlayers.find(
+                        (player) => player.id === currentSelected.manTargetId,
+                      )?.label ?? "None"}
+                    </p>
                   </div>
                 ) : null}
                 <AssignmentPanel
@@ -775,6 +915,12 @@ export default function Home() {
                     key={player.id}
                     player={player}
                     isSelected={player.id === selectedPlayerId}
+                    isManTargetCandidate={
+                      isManTargetSelectionMode &&
+                      player.team === "offense" &&
+                      ELIGIBLE_ROLES.has(player.role)
+                    }
+                    isCurrentManTarget={currentManTargetId === player.id}
                     onClick={handleSelectPlayer}
                   />
                 ))}
@@ -849,6 +995,8 @@ export default function Home() {
             onSelectPlayer={handleSelectPlayer}
             onMovePlayer={movePlayer}
             onAppendPathPoint={appendPathPoint}
+            zoneCoverages={visibleZoneCoverages}
+            manTargetSelectionMode={isManTargetSelectionMode}
           />
         </div>
       </section>

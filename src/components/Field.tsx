@@ -10,6 +10,7 @@ import {
   yardsToPx
 } from '@/lib/coordinateSystem';
 import { Player, Team } from '@/lib/movementEngine';
+import { ZoneCoverageArea } from '@/lib/separationEngine';
 import { snapPointToYard } from '@/lib/snapping';
 
 const offenseEligibleRoles = new Set(['WR', 'TE', 'RB']);
@@ -22,6 +23,8 @@ type FieldProps = {
   editableTeam?: Team;
   pathStartOverrides?: Record<string, Point>;
   hiddenPathTeams?: Team[];
+  zoneCoverages?: ZoneCoverageArea[];
+  manTargetSelectionMode?: boolean;
   onSelectPlayer: (id: string) => void;
   onMovePlayer: (id: string, point: Point) => void;
   onAppendPathPoint: (id: string, point: Point) => void;
@@ -57,11 +60,26 @@ export function Field({
   editableTeam,
   pathStartOverrides,
   hiddenPathTeams = [],
+  zoneCoverages = [],
+  manTargetSelectionMode = false,
   onSelectPlayer,
   onMovePlayer,
   onAppendPathPoint
 }: FieldProps) {
   const selected = players.find((p) => p.id === selectedPlayerId);
+  const manLinks = players
+    .filter(
+      (player) =>
+        player.team === 'defense' &&
+        player.assignment === 'man' &&
+        Boolean(player.manTargetId)
+    )
+    .map((defender) => ({
+      defender,
+      target: players.find((candidate) => candidate.id === defender.manTargetId)
+    }))
+    .filter((link): link is { defender: Player; target: Player } => Boolean(link.target));
+  const selectedManTargetId = selected?.assignment === 'man' ? selected.manTargetId : undefined;
   const dynamicViewBox = useMemo(() => {
     const minVisibleHeight = yardsToPx(60);
     const edgePadding = yardsToPx(10);
@@ -78,6 +96,7 @@ export function Field({
 
   const handleFieldClick = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!interactive || !selected || (editableTeam && selected.team !== editableTeam)) return;
+    if (selected.assignment === 'man') return;
     const point = getSnappedPointFromPointer(event.currentTarget, event.clientX, event.clientY);
     onAppendPathPoint(selected.id, point);
   };
@@ -96,6 +115,9 @@ export function Field({
           </marker>
           <marker id="defense-arrow-end" markerWidth="4" markerHeight="4" refX="3.5" refY="2" orient="auto" markerUnits="userSpaceOnUse">
             <path d="M 0 0 L 3.5 2 L 0 4 z" fill="#a1a1aa" />
+          </marker>
+          <marker id="blitz-arrow-end" markerWidth="4" markerHeight="4" refX="3.5" refY="2" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M 0 0 L 3.5 2 L 0 4 z" fill="#ef4444" />
           </marker>
           <marker id="offense-block-end" markerWidth="4" markerHeight="4" refX="3.1" refY="2" orient="auto" markerUnits="userSpaceOnUse">
             <path d="M 2.6 0.8 L 2.6 3.2" stroke="#ffffff" strokeWidth="0.9" strokeLinecap="round" fill="none" />
@@ -170,6 +192,72 @@ export function Field({
           opacity={0.9}
         />
 
+        {manLinks.map(({ defender, target }) => (
+          <line
+            key={`man-link-${defender.id}-${target.id}`}
+            x1={yardsToPx(defender.position.x)}
+            y1={yardsToPx(defender.position.y)}
+            x2={yardsToPx(target.position.x)}
+            y2={yardsToPx(target.position.y)}
+            stroke={defender.id === selectedPlayerId ? '#67e8f9' : '#22d3ee'}
+            strokeWidth={defender.id === selectedPlayerId ? 1.4 : 1.1}
+            strokeDasharray="4 4"
+            opacity={defender.id === selectedPlayerId ? 0.6 : 0.38}
+          />
+        ))}
+
+        {zoneCoverages.map((zone) => (
+          <g key={`zone-${zone.defenderId}`}>
+            {zone.shape === 'ellipse' &&
+            zone.center &&
+            zone.radiusX !== undefined &&
+            zone.radiusY !== undefined ? (
+              <>
+                <ellipse
+                  cx={yardsToPx(zone.center.x)}
+                  cy={yardsToPx(zone.center.y)}
+                  rx={yardsToPx(zone.radiusX)}
+                  ry={yardsToPx(zone.radiusY)}
+                  fill="#93c5fd"
+                  opacity={0.12}
+                />
+                <ellipse
+                  cx={yardsToPx(zone.center.x)}
+                  cy={yardsToPx(zone.center.y)}
+                  rx={yardsToPx(zone.radiusX)}
+                  ry={yardsToPx(zone.radiusY)}
+                  fill="none"
+                  stroke="#93c5fd"
+                  strokeWidth={1.2}
+                  strokeDasharray="5 4"
+                  opacity={0.45}
+                />
+              </>
+            ) : null}
+            {zone.shape === 'circle' && zone.center && zone.radius !== undefined ? (
+              <>
+                <circle
+                  cx={yardsToPx(zone.center.x)}
+                  cy={yardsToPx(zone.center.y)}
+                  r={yardsToPx(zone.radius)}
+                  fill="#93c5fd"
+                  opacity={0.12}
+                />
+                <circle
+                  cx={yardsToPx(zone.center.x)}
+                  cy={yardsToPx(zone.center.y)}
+                  r={yardsToPx(zone.radius)}
+                  fill="none"
+                  stroke="#93c5fd"
+                  strokeWidth={1.2}
+                  strokeDasharray="5 4"
+                  opacity={0.45}
+                />
+              </>
+            ) : null}
+          </g>
+        ))}
+
         {players.map((player) => {
           const p = toSvg(player.position);
           const pathStart = pathStartOverrides?.[player.id] ?? player.position;
@@ -177,20 +265,33 @@ export function Field({
           const pathD = pathPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
           const isSelected = player.id === selectedPlayerId;
           const isEligible = player.team === 'offense' && offenseEligibleRoles.has(player.role);
-          const isArrowAssignment = player.assignment === 'run' || player.assignment === 'pass-route';
+          const isManTargetCandidate = manTargetSelectionMode && isEligible;
+          const isCurrentManTarget = isManTargetCandidate && selectedManTargetId === player.id;
+          const isArrowAssignment =
+            player.assignment === 'run' ||
+            player.assignment === 'pass-route' ||
+            player.assignment === 'blitz';
           const isBlockAssignment = player.assignment === 'block';
+          const isBlitzAssignment = player.assignment === 'blitz';
           const markerEnd = isBlockAssignment
             ? `url(#${player.team === 'offense' ? 'offense' : 'defense'}-block-end)`
+            : isBlitzAssignment
+              ? 'url(#blitz-arrow-end)'
             : isArrowAssignment
               ? `url(#${player.team === 'offense' ? 'offense' : 'defense'}-arrow-end)`
               : undefined;
+          const pathStroke = isBlitzAssignment
+            ? '#ef4444'
+            : player.team === 'offense'
+              ? '#ffffff'
+              : '#a1a1aa';
 
           return (
             <g key={player.id}>
               {!hiddenPathTeams.includes(player.team) && player.path.length ? (
                 <path
                   d={pathD}
-                  stroke={player.team === 'offense' ? '#ffffff' : '#a1a1aa'}
+                  stroke={pathStroke}
                   strokeDasharray={player.assignment === 'block' ? '3 3' : 'none'}
                   markerEnd={markerEnd}
                   fill="none"
@@ -204,8 +305,15 @@ export function Field({
                 transform={`translate(${p.x}, ${p.y})`}
                 onPointerDown={(event) => {
                   event.stopPropagation();
-                  if (!interactive || (editableTeam && player.team !== editableTeam)) return;
+                  const isEditable = !editableTeam || player.team === editableTeam;
+                  const canChooseManTarget =
+                    manTargetSelectionMode &&
+                    editableTeam === 'defense' &&
+                    player.team === 'offense' &&
+                    offenseEligibleRoles.has(player.role);
+                  if (!interactive || (!isEditable && !canChooseManTarget)) return;
                   onSelectPlayer(player.id);
+                  if (!isEditable) return;
                   const svg = (event.target as SVGElement).ownerSVGElement;
                   if (!svg) return;
 
@@ -221,18 +329,34 @@ export function Field({
                   window.addEventListener('pointermove', move);
                   window.addEventListener('pointerup', up);
                 }}
-                className={interactive && (!editableTeam || player.team === editableTeam) ? 'cursor-pointer' : 'cursor-not-allowed'}
+                className={
+                  interactive &&
+                  ((!editableTeam || player.team === editableTeam) ||
+                    (manTargetSelectionMode && player.team === 'offense' && offenseEligibleRoles.has(player.role)))
+                    ? 'cursor-pointer'
+                    : 'cursor-not-allowed'
+                }
               >
                 <circle
                   r={6.375}
                   fill={player.team === 'offense' ? '#ffffff' : '#52525b'}
-                  stroke={isSelected ? '#ffffff' : '#09090b'}
+                  stroke={isCurrentManTarget ? '#67e8f9' : isSelected ? '#ffffff' : '#09090b'}
                   strokeWidth={isSelected ? 2.25 : 1.5}
                 />
                 <text x={0} y={2.25} textAnchor="middle" fill={player.team === 'offense' ? '#09090b' : '#fafafa'} fontSize={5.25} fontWeight={800}>
                   {player.role}
                 </text>
                 {isEligible ? <circle r={8.625} fill="none" stroke="#e4e4e7" strokeWidth={0.825} opacity={0.9} /> : null}
+                {isManTargetCandidate ? (
+                  <circle
+                    r={9.8}
+                    fill="none"
+                    stroke={isCurrentManTarget ? '#67e8f9' : '#22d3ee'}
+                    strokeDasharray="2.5 2"
+                    strokeWidth={0.9}
+                    opacity={0.85}
+                  />
+                ) : null}
               </g>
             </g>
           );
