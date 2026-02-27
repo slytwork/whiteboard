@@ -25,3 +25,15 @@
 - [ ] We need the tackling mechanic to apply to pass plays as well. After the receiver catches the ball it should be similar to the running and tackling mechanic.
 - [ ] When a defender is pursuing the ball carrier and there is an offensive player with a blocking assignment should stop 1 defender who is pursuing. As soon as the first defender to reach the ball carrier without being blocked should stop the ball carrier and should stop all players assignments and should end the play.
 - [x] Let's add a replay button after the end of the play happens to view the reveal again before going to the next round.
+- [x] Let's remove the pass the device to the defense screen and just show whos turn it is in the control panel on the side. The modal is a little aggressive and all the controls staying in the control panel on the left keeps the users mouse in the top left unless setting up the play
+- [x] Incorporate sack mechanics when the quarterback doesnt find a player that is open to throw the ball
+- [ ] We need to improve the offensive line and defensive line play on a pass. The defensive linemen are trying to get to the quarterback and the offensive linemen should attempt to stay in between the quarterback so the blocking mechanics can stay in place to prevent the defensive linemen from tackling the quarterback which would end the play in a sack.
+- [ ] So instead of moving the ball after each play, lets move the field position down and keep the line of scrimmage static to give the illusion that the ball has move forward the amount of yards gained on the last play.
+- [ ] Make the defensive linemen or any blitzers pursuit to the ball immediately on the snap/reveal until the play ends or the reveal is over.
+- [x] Always start a match at 1st & 10
+- [x] In zone coverage the zone defender still isn't relating to a receiver that has run in the zone, his speed should maintain and follow that defender in the zone. If two defenders enter that zone then it should randomly chose one of the defenders to follow while in that zone
+- [x] If an offensive player is being followed by a defensive player in a zone, the quarterback should not throw the ball to him. Only if the player is not being followed by a defensive zone defender or not in a zone at all and no defender is in its catch radius.
+- [x] the quarterback should check all receivers repeatedly for 4 seconds to see if any of them are open. After 4 seconds of searching for an open receiver consider it a coverage sack and end the play
+- [x] the ball traveling to the receiver must happen on a pass unless it is a sack. Please show the ball with the player that has a ball the entire time starting with the quarterback
+- [x] Let's prioritize open receivers who are the furthest down the field first for passes instead of immediately finding the back that is behind the scrimmage right away
+- [x] Let's also prioritize the receivers that have the least amount of defenders around them

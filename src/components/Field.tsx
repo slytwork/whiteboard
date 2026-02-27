@@ -26,6 +26,8 @@ type FieldProps = {
   hiddenPathTeams?: Team[];
   zoneCoverages?: ZoneCoverageArea[];
   manTargetSelectionMode?: boolean;
+  ballPosition?: Point;
+  ballCarrierId?: string;
   onSelectPlayer: (id: string) => void;
   onMovePlayer: (id: string, point: Point) => void;
   onAppendPathPoint: (id: string, point: Point) => void;
@@ -64,6 +66,8 @@ export function Field({
   hiddenPathTeams = [],
   zoneCoverages = [],
   manTargetSelectionMode = false,
+  ballPosition,
+  ballCarrierId,
   onSelectPlayer,
   onMovePlayer,
   onAppendPathPoint
@@ -103,7 +107,7 @@ export function Field({
 
   const handleFieldClick = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!interactive || !selected || (editableTeam && selected.team !== editableTeam)) return;
-    if (selected.assignment === 'man') return;
+    if (selected.assignment === 'man' || selected.assignment === 'blitz') return;
     const point = getSnappedPointFromPointer(event.currentTarget, event.clientX, event.clientY);
     onAppendPathPoint(selected.id, point);
   };
@@ -221,6 +225,13 @@ export function Field({
           />
         ))}
 
+        {ballPosition ? (
+          <g transform={`translate(${yardsToPx(ballPosition.x)}, ${yardsToPx(ballPosition.y)})`}>
+            <ellipse rx={2.1} ry={1.45} fill="#8b5a2b" stroke="#f5f5f5" strokeWidth={0.45} />
+            <line x1={-0.95} x2={0.95} y1={0} y2={0} stroke="#f5f5f5" strokeWidth={0.35} strokeLinecap="round" />
+          </g>
+        ) : null}
+
         {zoneCoverages.map((zone) => (
           <g key={`zone-${zone.defenderId}`}>
             {zone.shape === 'ellipse' &&
@@ -305,7 +316,9 @@ export function Field({
 
           return (
             <g key={player.id}>
-              {!hiddenPathTeams.includes(player.team) && player.path.length ? (
+              {!hiddenPathTeams.includes(player.team) &&
+              player.assignment !== 'blitz' &&
+              player.path.length ? (
                 <path
                   d={pathD}
                   stroke={pathStroke}
@@ -360,6 +373,9 @@ export function Field({
                   stroke={isCurrentManTarget ? '#67e8f9' : isSelected ? '#ffffff' : '#09090b'}
                   strokeWidth={isSelected ? 2.25 : 1.5}
                 />
+                {ballCarrierId === player.id ? (
+                  <circle r={8.1} fill="none" stroke="#facc15" strokeWidth={0.9} opacity={0.9} />
+                ) : null}
                 <text x={0} y={2.25} textAnchor="middle" fill={player.team === 'offense' ? '#09090b' : '#fafafa'} fontSize={fieldTagFontSize} fontWeight={800}>
                   {fieldTag}
                 </text>
