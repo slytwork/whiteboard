@@ -87,7 +87,9 @@ const getManCoveragePosition = (defenderId: string, targetPoint: Point, progress
 };
 
 const PLAYER_DISTANCE_PER_PLAY = 10;
+const SKILL_PLAYER_SPEED_MULTIPLIER = 1.2;
 const offensiveLineRoles = new Set(['LT', 'LG', 'C', 'RG', 'RT']);
+const defensiveLineRoles = new Set(['DL']);
 const PASS_PROTECTION_ANCHOR = 0.62;
 const MAX_OL_PASS_SET_DEPTH_YARDS = 2;
 const MIN_OL_QB_BUFFER_YARDS = 1.4;
@@ -100,6 +102,13 @@ const BLOCK_STANDOFF_YARDS = 1.35;
 const PASS_BLOCK_FREEZE_EPSILON = 0.0001;
 const QB_DROPBACK_YARDS = 3;
 const QB_DROPBACK_COMPLETE_PROGRESS = 0.25;
+
+const isSkillPlayer = (player: Player): boolean =>
+  !offensiveLineRoles.has(player.role) && !defensiveLineRoles.has(player.role);
+
+const getPlayerDistancePerPlay = (player: Player): number =>
+  PLAYER_DISTANCE_PER_PLAY *
+  (isSkillPlayer(player) ? SKILL_PLAYER_SPEED_MULTIPLIER : 1);
 
 export type RunBlockEngagement = {
   progress: number;
@@ -135,10 +144,10 @@ const getManTrackingState = (
   const trackedPoint = pointAlongPathByDistance(
     targetStart,
     target.path,
-    PLAYER_DISTANCE_PER_PLAY * progress
+    getPlayerDistancePerPlay(target) * progress
   );
   const defenderStart = startPositions[defender.id] ?? defender.position;
-  const maxDistance = PLAYER_DISTANCE_PER_PLAY * progress;
+  const maxDistance = getPlayerDistancePerPlay(defender) * progress;
   const chasePoint = moveToward(defenderStart, trackedPoint, maxDistance);
   const canRandomize = distanceBetween(chasePoint, trackedPoint) <= MAN_VICINITY_RADIUS;
 
@@ -202,7 +211,7 @@ export const computeFramePositions = (
     }
 
     const start = startPositions[player.id] ?? player.position;
-    const maxDistance = PLAYER_DISTANCE_PER_PLAY * progress;
+    const maxDistance = getPlayerDistancePerPlay(player) * progress;
     map[player.id] = pointAlongPathByDistance(start, player.path, maxDistance);
   }
 
@@ -235,7 +244,7 @@ export const computeFramePositions = (
       ) % sorted.length;
       const chosen = sorted[choiceIndex];
       const defenderStart = startPositions[player.id] ?? player.position;
-      const maxTrackDistance = PLAYER_DISTANCE_PER_PLAY * progress;
+      const maxTrackDistance = getPlayerDistancePerPlay(player) * progress;
 
       map[player.id] = clampFieldPoint(
         moveToward(defenderStart, chosen.point, maxTrackDistance)
@@ -306,7 +315,7 @@ export const computeFramePositions = (
         continue;
       }
       const defenderStart = startPositions[defender.id] ?? defender.position;
-      const maxPursuitDistance = PLAYER_DISTANCE_PER_PLAY * progress;
+      const maxPursuitDistance = getPlayerDistancePerPlay(defender) * progress;
       map[defender.id] = clampFieldPoint(
         moveToward(defenderStart, pursuitTarget, maxPursuitDistance)
       );
@@ -353,7 +362,7 @@ export const computeFramePositions = (
             Math.min(protectionPoint.y, qbPosition.y - MIN_OL_QB_BUFFER_YARDS)
           )
         };
-        const maxDistance = PLAYER_DISTANCE_PER_PLAY * progress;
+        const maxDistance = getPlayerDistancePerPlay(blocker) * progress;
         map[blocker.id] = clampFieldPoint(
           moveToward(blockerStart, clampedProtectionPoint, maxDistance)
         );
@@ -420,7 +429,7 @@ export const computeFramePositions = (
     for (const defender of players) {
       if (defender.team !== 'defense') continue;
       const defenderStart = startPositions[defender.id] ?? defender.position;
-      const maxPursuitDistance = PLAYER_DISTANCE_PER_PLAY * progress;
+      const maxPursuitDistance = getPlayerDistancePerPlay(defender) * progress;
       map[defender.id] = clampFieldPoint(
         moveToward(defenderStart, runnerPoint, maxPursuitDistance)
       );

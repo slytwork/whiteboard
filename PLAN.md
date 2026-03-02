@@ -37,3 +37,5 @@
 - [x] the ball traveling to the receiver must happen on a pass unless it is a sack. Please show the ball with the player that has a ball the entire time starting with the quarterback
 - [x] Let's prioritize open receivers who are the furthest down the field first for passes instead of immediately finding the back that is behind the scrimmage right away
 - [x] Let's also prioritize the receivers that have the least amount of defenders around them
+- [x] Lets increase the speed of all skill players by like 20%. They are moving versy slow as of now
+- [x] Instead of just making the ball carrier run to passed the first down line and stop. The ball carrier should continue running vertical and only stop if tackled or the ball carrier reaches the top of the viewport.

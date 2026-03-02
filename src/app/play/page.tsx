@@ -67,7 +67,6 @@ const QB_THROW_CATCH_RADIUS_YARDS = 2;
 const QB_NEARBY_DEFENDER_RADIUS_YARDS = 4;
 const PASS_MIN_READ_TIME_MS = 1000;
 const RUN_TACKLE_SAMPLE_STEPS = 240;
-const YAC_CARRIER_EXTRA_YARDS = 8;
 const YAC_DEFENDER_PURSUIT_YARDS = 8;
 const MIN_PLAYER_SEPARATION_YARDS = 1.05;
 
@@ -393,8 +392,6 @@ const getPassCompletionProgress = (plan: RevealBallPlan): number | undefined => 
 const applyAfterCatchEffort = (
   players: Player[],
   framePositions: Record<string, Point>,
-  lineOfScrimmageYard: number,
-  requiredYards: number,
   plan: RevealBallPlan,
   progress: number,
 ): {
@@ -414,13 +411,16 @@ const applyAfterCatchEffort = (
   const receiverBase = framePositions[receiverId];
   if (!receiverBase) return undefined;
 
-  const lineToGainYard = Math.max(PLAYABLE_START_YARD, lineOfScrimmageYard - requiredYards);
-  const receiverTarget = { x: receiverBase.x, y: lineToGainYard };
+  const receiverTarget = { x: receiverBase.x, y: PLAYABLE_START_YARD };
+  const maxCarrierDistance = Math.max(
+    0,
+    distanceBetweenPoints(receiverBase, receiverTarget),
+  );
   const ballCarrierPoint = clampFieldPoint(
     movePointToward(
       receiverBase,
       receiverTarget,
-      YAC_CARRIER_EXTRA_YARDS * effortProgress,
+      maxCarrierDistance * effortProgress,
     ),
   );
 
@@ -1324,6 +1324,70 @@ export default function Home() {
       return;
     }
 
+    const completedBallCarrier = finalBallCarrierId
+      ? finalPlayers.find(
+          (player) =>
+            player.id === finalBallCarrierId &&
+            player.team === "offense" &&
+            player.id !== QB_ID,
+        )
+      : undefined;
+    if (completedBallCarrier) {
+      const gainedYards = Math.max(
+        0,
+        situation.ballSpotYard - completedBallCarrier.position.y,
+      );
+      const nextSituation = buildNextSituationAfterGain(situation, gainedYards);
+      setQueuedRoundSituation(nextSituation);
+
+      if (gainedYards >= situation.requiredYards) {
+        const nextOffenseWins = offenseWins + 1;
+        setOffenseWins(nextOffenseWins);
+        if (nextOffenseWins >= 3) {
+          setResultMessage("Offense wins the match 3 plays to glory.");
+          setActiveAssignment(undefined);
+          setPhase("match-over");
+          return;
+        }
+        setResultMessage(
+          `Offense scores! ${completedBallCarrier.label} converted for ${toDisplayYards(
+            gainedYards,
+          )} yds. Next: ${getDownAndDistanceLabel(nextSituation)}.`,
+        );
+        setActiveAssignment(undefined);
+        setPhase("discussion");
+        return;
+      }
+
+      if (gainedYards > 0) {
+        setResultMessage(
+          `Gain of ${toDisplayYards(gainedYards)} yds by ${completedBallCarrier.label}. Next: ${getDownAndDistanceLabel(
+            nextSituation,
+          )}.`,
+        );
+        setActiveAssignment(undefined);
+        setPhase("discussion");
+        return;
+      }
+
+      const nextDefenseWins = defenseWins + 1;
+      setDefenseWins(nextDefenseWins);
+      if (nextDefenseWins >= 3) {
+        setResultMessage("Defense stonewalls the match and wins.");
+        setActiveAssignment(undefined);
+        setPhase("match-over");
+        return;
+      }
+      setResultMessage(
+        `Completion to ${completedBallCarrier.label} for no gain. Next: ${getDownAndDistanceLabel(
+          nextSituation,
+        )}.`,
+      );
+      setActiveAssignment(undefined);
+      setPhase("discussion");
+      return;
+    }
+
     const openTargets = separation
       .filter((res) => {
         const player = offenseEligible.find((candidate) => candidate.id === res.offensiveId);
@@ -1496,8 +1560,6 @@ export default function Home() {
         ? applyAfterCatchEffort(
             startPlayers,
             nextPositions,
-            situation.ballSpotYard,
-            situation.requiredYards,
             ballPlan,
             progress,
           )
@@ -1732,8 +1794,6 @@ export default function Home() {
         ? applyAfterCatchEffort(
             startPlayers,
             nextPositions,
-            situation.ballSpotYard,
-            situation.requiredYards,
             snapshot.ballPlan,
             progress,
           )
