@@ -75,6 +75,199 @@ const offenseTemplates: PlayTemplate[] = [
       };
     },
   },
+  {
+    id: "all-hitches",
+    team: "offense",
+    label: "All Hitches",
+    description: "Outside and slot receivers settle on quick hitches with six-man protection.",
+    buildAssignments: (players) => {
+      const p = byId(players);
+      return {
+        qb: { assignment: "none", path: [] },
+        rb: { assignment: "block", path: [from(p.rb, 0.2, -1.4)] },
+        lt: { assignment: "block", path: [from(p.lt, -0.8, -1.2)] },
+        lg: { assignment: "block", path: [from(p.lg, -0.5, -1.2)] },
+        c: { assignment: "block", path: [from(p.c, 0, -1.2)] },
+        rg: { assignment: "block", path: [from(p.rg, 0.5, -1.2)] },
+        rt: { assignment: "block", path: [from(p.rt, 0.8, -1.2)] },
+        wr1: { assignment: "pass-route", path: [from(p.wr1, 0, -6)] },
+        wr2: { assignment: "pass-route", path: [from(p.wr2, 0, -6)] },
+        wr3: { assignment: "pass-route", path: [from(p.wr3, 0, -5.5)] },
+        te: { assignment: "pass-route", path: [from(p.te, 0, -5)] },
+      };
+    },
+  },
+  {
+    id: "stick",
+    team: "offense",
+    label: "Stick",
+    description: "Y-stick concept with flat release and quick spacing underneath.",
+    buildAssignments: (players) => {
+      const p = byId(players);
+      return {
+        qb: { assignment: "none", path: [] },
+        rb: {
+          assignment: "pass-route",
+          path: [from(p.rb, 2.6, -1.6), from(p.rb, 4.4, -2)],
+        },
+        lt: { assignment: "block", path: [from(p.lt, -0.8, -1.2)] },
+        lg: { assignment: "block", path: [from(p.lg, -0.5, -1.2)] },
+        c: { assignment: "block", path: [from(p.c, 0, -1.2)] },
+        rg: { assignment: "block", path: [from(p.rg, 0.5, -1.2)] },
+        rt: { assignment: "block", path: [from(p.rt, 0.8, -1.2)] },
+        wr1: { assignment: "pass-route", path: [from(p.wr1, 0, -8)] },
+        wr2: { assignment: "pass-route", path: [from(p.wr2, 0, -8)] },
+        wr3: { assignment: "pass-route", path: [from(p.wr3, 0, -5)] },
+        te: {
+          assignment: "pass-route",
+          path: [from(p.te, -1.1, -4.8), from(p.te, -1, -6.2)],
+        },
+      };
+    },
+  },
+  {
+    id: "snag",
+    team: "offense",
+    label: "Snag",
+    description: "Triangle spacing with corner route, snag settle, and quick flat.",
+    buildAssignments: (players) => {
+      const p = byId(players);
+      return {
+        qb: { assignment: "none", path: [] },
+        rb: {
+          assignment: "pass-route",
+          path: [from(p.rb, 2.8, -1.4), from(p.rb, 4.8, -2)],
+        },
+        lt: { assignment: "block", path: [from(p.lt, -0.8, -1.2)] },
+        lg: { assignment: "block", path: [from(p.lg, -0.5, -1.2)] },
+        c: { assignment: "block", path: [from(p.c, 0, -1.2)] },
+        rg: { assignment: "block", path: [from(p.rg, 0.5, -1.2)] },
+        rt: { assignment: "block", path: [from(p.rt, 0.8, -1.2)] },
+        wr1: { assignment: "pass-route", path: [from(p.wr1, 0, -9)] },
+        wr2: {
+          assignment: "pass-route",
+          path: [from(p.wr2, -4.2, -8.8)],
+        },
+        wr3: {
+          assignment: "pass-route",
+          path: [from(p.wr3, 2.2, -4.2), from(p.wr3, 1.8, -4.8)],
+        },
+        te: { assignment: "pass-route", path: [from(p.te, 0, -4.8)] },
+      };
+    },
+  },
+  {
+    id: "smash",
+    team: "offense",
+    label: "Smash",
+    description: "Corner-over-hitch concept on both sides with quick underneath control.",
+    buildAssignments: (players) => {
+      const p = byId(players);
+      return {
+        qb: { assignment: "none", path: [] },
+        rb: { assignment: "block", path: [from(p.rb, 0.4, -1.3)] },
+        lt: { assignment: "block", path: [from(p.lt, -0.8, -1.2)] },
+        lg: { assignment: "block", path: [from(p.lg, -0.5, -1.2)] },
+        c: { assignment: "block", path: [from(p.c, 0, -1.2)] },
+        rg: { assignment: "block", path: [from(p.rg, 0.5, -1.2)] },
+        rt: { assignment: "block", path: [from(p.rt, 0.8, -1.2)] },
+        wr1: {
+          assignment: "pass-route",
+          path: [from(p.wr1, 4.2, -8.8)],
+        },
+        wr2: {
+          assignment: "pass-route",
+          path: [from(p.wr2, -4.2, -8.8)],
+        },
+        wr3: { assignment: "pass-route", path: [from(p.wr3, 0, -5)] },
+        te: { assignment: "pass-route", path: [from(p.te, 0, -5.5)] },
+      };
+    },
+  },
+  {
+    id: "four-verts",
+    team: "offense",
+    label: "4 Verts",
+    description: "Vertical stretch with four routes attacking deep seams and outside leverage.",
+    buildAssignments: (players) => {
+      const p = byId(players);
+      return {
+        qb: { assignment: "none", path: [] },
+        rb: { assignment: "block", path: [from(p.rb, 0.2, -1.4)] },
+        lt: { assignment: "block", path: [from(p.lt, -0.8, -1.2)] },
+        lg: { assignment: "block", path: [from(p.lg, -0.5, -1.2)] },
+        c: { assignment: "block", path: [from(p.c, 0, -1.2)] },
+        rg: { assignment: "block", path: [from(p.rg, 0.5, -1.2)] },
+        rt: { assignment: "block", path: [from(p.rt, 0.8, -1.2)] },
+        wr1: { assignment: "pass-route", path: [from(p.wr1, 0.2, -16)] },
+        wr2: { assignment: "pass-route", path: [from(p.wr2, -0.2, -16)] },
+        wr3: { assignment: "pass-route", path: [from(p.wr3, 0, -14)] },
+        te: { assignment: "pass-route", path: [from(p.te, 0, -14)] },
+      };
+    },
+  },
+  {
+    id: "y-cross",
+    team: "offense",
+    label: "Y-Cross",
+    description: "Primary Y crossing route with backside dig and clear-out verticals.",
+    buildAssignments: (players) => {
+      const p = byId(players);
+      return {
+        qb: { assignment: "none", path: [] },
+        rb: {
+          assignment: "pass-route",
+          path: [from(p.rb, -2.6, -1.3), from(p.rb, -4.4, -2)],
+        },
+        lt: { assignment: "block", path: [from(p.lt, -0.8, -1.2)] },
+        lg: { assignment: "block", path: [from(p.lg, -0.5, -1.2)] },
+        c: { assignment: "block", path: [from(p.c, 0, -1.2)] },
+        rg: { assignment: "block", path: [from(p.rg, 0.5, -1.2)] },
+        rt: { assignment: "block", path: [from(p.rt, 0.8, -1.2)] },
+        wr1: { assignment: "pass-route", path: [from(p.wr1, 0, -14)] },
+        wr2: { assignment: "pass-route", path: [from(p.wr2, 0, -14)] },
+        wr3: {
+          assignment: "pass-route",
+          path: [from(p.wr3, 4.8, -8.2)],
+        },
+        te: {
+          assignment: "pass-route",
+          path: [from(p.te, -9.5, -9), from(p.te, -15, -9.4)],
+        },
+      };
+    },
+  },
+  {
+    id: "mesh",
+    team: "offense",
+    label: "Mesh",
+    description: "Shallow crossing mesh with a sit route and a backside vertical.",
+    buildAssignments: (players) => {
+      const p = byId(players);
+      return {
+        qb: { assignment: "none", path: [] },
+        rb: {
+          assignment: "pass-route",
+          path: [from(p.rb, 2.3, -1.4), from(p.rb, 4.2, -2)],
+        },
+        lt: { assignment: "block", path: [from(p.lt, -0.8, -1.2)] },
+        lg: { assignment: "block", path: [from(p.lg, -0.5, -1.2)] },
+        c: { assignment: "block", path: [from(p.c, 0, -1.2)] },
+        rg: { assignment: "block", path: [from(p.rg, 0.5, -1.2)] },
+        rt: { assignment: "block", path: [from(p.rt, 0.8, -1.2)] },
+        wr1: { assignment: "pass-route", path: [from(p.wr1, 0, -14)] },
+        wr2: {
+          assignment: "pass-route",
+          path: [from(p.wr2, -10.5, -3.8), from(p.wr2, -16, -4)],
+        },
+        wr3: {
+          assignment: "pass-route",
+          path: [from(p.wr3, 9.8, -3.8), from(p.wr3, 15.5, -4)],
+        },
+        te: { assignment: "pass-route", path: [from(p.te, -1.8, -5.2)] },
+      };
+    },
+  },
 ];
 
 const defenseTemplates: PlayTemplate[] = [

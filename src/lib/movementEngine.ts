@@ -1,17 +1,20 @@
-import { clampFieldPoint, Point } from './coordinateSystem';
-import { getZoneCoverageForDefender, isPointInsideZone } from './separationEngine';
+import { clampFieldPoint, Point } from "./coordinateSystem";
+import {
+  getZoneCoverageForDefender,
+  isPointInsideZone,
+} from "./separationEngine";
 
 export type AssignmentType =
-  | 'run'
-  | 'pass-route'
-  | 'block'
-  | 'man'
-  | 'zone'
-  | 'blitz'
-  | 'contain'
-  | 'none';
+  | "run"
+  | "pass-route"
+  | "block"
+  | "man"
+  | "zone"
+  | "blitz"
+  | "contain"
+  | "none";
 
-export type Team = 'offense' | 'defense';
+export type Team = "offense" | "defense";
 
 export type Player = {
   id: string;
@@ -26,7 +29,7 @@ export type Player = {
 
 const lerp = (from: Point, to: Point, t: number): Point => ({
   x: from.x + (to.x - from.x) * t,
-  y: from.y + (to.y - from.y) * t
+  y: from.y + (to.y - from.y) * t,
 });
 
 const distanceBetween = (from: Point, to: Point) =>
@@ -41,11 +44,15 @@ const moveToward = (from: Point, to: Point, maxDistance: number): Point => {
   const ratio = maxDistance / distance;
   return {
     x: from.x + dx * ratio,
-    y: from.y + dy * ratio
+    y: from.y + dy * ratio,
   };
 };
 
-const pointAlongPathByDistance = (start: Point, path: Point[], maxDistance: number): Point => {
+const pointAlongPathByDistance = (
+  start: Point,
+  path: Point[],
+  maxDistance: number,
+): Point => {
   const nodes = [start, ...path];
   if (nodes.length === 1 || maxDistance <= 0) return start;
 
@@ -73,23 +80,27 @@ const idSeed = (id: string): number => {
   return Math.abs(hash >>> 0);
 };
 
-const getManCoveragePosition = (defenderId: string, targetPoint: Point, progress: number): Point => {
+const getManCoveragePosition = (
+  defenderId: string,
+  targetPoint: Point,
+  progress: number,
+): Point => {
   const seed = idSeed(defenderId);
   const baseLeverage = ((seed % 3) - 1) * 0.35;
-  const trailDepth = 0.55 + ((seed % 23) / 100);
+  const trailDepth = 0.55 + (seed % 23) / 100;
   const xJitter = Math.sin(progress * 9 + seed * 0.0007) * 0.25;
   const yJitter = Math.cos(progress * 7 + seed * 0.0009) * 0.2;
 
   return clampFieldPoint({
     x: targetPoint.x + baseLeverage + xJitter,
-    y: targetPoint.y + trailDepth + yJitter
+    y: targetPoint.y + trailDepth + yJitter,
   });
 };
 
 const PLAYER_DISTANCE_PER_PLAY = 10;
-const SKILL_PLAYER_SPEED_MULTIPLIER = 1.2;
-const offensiveLineRoles = new Set(['LT', 'LG', 'C', 'RG', 'RT']);
-const defensiveLineRoles = new Set(['DL']);
+const SKILL_PLAYER_SPEED_MULTIPLIER = 1.84;
+const offensiveLineRoles = new Set(["LT", "LG", "C", "RG", "RT"]);
+const defensiveLineRoles = new Set(["DL"]);
 const PASS_PROTECTION_ANCHOR = 0.62;
 const MAX_OL_PASS_SET_DEPTH_YARDS = 2;
 const MIN_OL_QB_BUFFER_YARDS = 1.4;
@@ -123,61 +134,77 @@ const passBlockFreezeState: {
   frozenByDefender: Record<string, Point>;
 } = {
   lastProgress: -1,
-  frozenByDefender: {}
+  frozenByDefender: {},
 };
 
 const getManTrackingState = (
   defender: Player,
   players: Player[],
   startPositions: Record<string, Point>,
-  progress: number
+  progress: number,
 ): { position: Point; targetId?: string; isRandomized: boolean } => {
-  if (defender.assignment !== 'man' || !defender.manTargetId) {
-    return { position: startPositions[defender.id] ?? defender.position, isRandomized: false };
+  if (defender.assignment !== "man" || !defender.manTargetId) {
+    return {
+      position: startPositions[defender.id] ?? defender.position,
+      isRandomized: false,
+    };
   }
   const target = players.find((player) => player.id === defender.manTargetId);
   if (!target) {
-    return { position: startPositions[defender.id] ?? defender.position, isRandomized: false };
+    return {
+      position: startPositions[defender.id] ?? defender.position,
+      isRandomized: false,
+    };
   }
 
   const targetStart = startPositions[target.id] ?? target.position;
   const trackedPoint = pointAlongPathByDistance(
     targetStart,
     target.path,
-    getPlayerDistancePerPlay(target) * progress
+    getPlayerDistancePerPlay(target) * progress,
   );
   const defenderStart = startPositions[defender.id] ?? defender.position;
   const maxDistance = getPlayerDistancePerPlay(defender) * progress;
   const chasePoint = moveToward(defenderStart, trackedPoint, maxDistance);
-  const canRandomize = distanceBetween(chasePoint, trackedPoint) <= MAN_VICINITY_RADIUS;
+  const canRandomize =
+    distanceBetween(chasePoint, trackedPoint) <= MAN_VICINITY_RADIUS;
 
   if (!canRandomize) {
     return {
       position: clampFieldPoint(chasePoint),
       targetId: target.id,
-      isRandomized: false
+      isRandomized: false,
     };
   }
 
-  const randomPoint = getManCoveragePosition(defender.id, trackedPoint, progress);
+  const randomPoint = getManCoveragePosition(
+    defender.id,
+    trackedPoint,
+    progress,
+  );
   const blended = lerp(chasePoint, randomPoint, MAN_RANDOM_BLEND);
   return {
     position: clampFieldPoint(blended),
     targetId: target.id,
-    isRandomized: true
+    isRandomized: true,
   };
 };
 
 export const getManRandomizedTargetIds = (
   players: Player[],
   startPositions: Record<string, Point>,
-  progress: number
+  progress: number,
 ): Set<string> => {
   const randomizedTargetIds = new Set<string>();
 
   for (const defender of players) {
-    if (defender.team !== 'defense' || defender.assignment !== 'man') continue;
-    const state = getManTrackingState(defender, players, startPositions, progress);
+    if (defender.team !== "defense" || defender.assignment !== "man") continue;
+    const state = getManTrackingState(
+      defender,
+      players,
+      startPositions,
+      progress,
+    );
     if (state.isRandomized && state.targetId) {
       randomizedTargetIds.add(state.targetId);
     }
@@ -193,19 +220,33 @@ export const computeFramePositions = (
   lineOfScrimmageYard?: number,
   runBlockEngagements?: RunBlockEngagementMap,
   runBallCarrierOverrideId?: string,
-  blitzPursuitTarget?: Point
+  blitzPursuitTarget?: Point,
 ): Record<string, Point> => {
-  if (progress + PASS_BLOCK_FREEZE_EPSILON < passBlockFreezeState.lastProgress) {
+  if (
+    progress + PASS_BLOCK_FREEZE_EPSILON <
+    passBlockFreezeState.lastProgress
+  ) {
     passBlockFreezeState.frozenByDefender = {};
   }
   passBlockFreezeState.lastProgress = progress;
 
-  const map = Object.fromEntries(players.map((p) => [p.id, startPositions[p.id] ?? p.position]));
-  const offenseEligibleRoles = new Set(['WR', 'TE', 'RB']);
+  const map = Object.fromEntries(
+    players.map((p) => [p.id, startPositions[p.id] ?? p.position]),
+  );
+  const offenseEligibleRoles = new Set(["WR", "TE", "RB"]);
 
   for (const player of players) {
-    if (player.team === 'defense' && player.assignment === 'man' && player.manTargetId) {
-      const state = getManTrackingState(player, players, startPositions, progress);
+    if (
+      player.team === "defense" &&
+      player.assignment === "man" &&
+      player.manTargetId
+    ) {
+      const state = getManTrackingState(
+        player,
+        players,
+        startPositions,
+        progress,
+      );
       map[player.id] = state.position;
       continue;
     }
@@ -217,66 +258,69 @@ export const computeFramePositions = (
 
   if (lineOfScrimmageYard !== undefined) {
     for (const player of players) {
-      if (player.team !== 'defense' || player.assignment !== 'zone') continue;
+      if (player.team !== "defense" || player.assignment !== "zone") continue;
       const anchor = map[player.id] ?? player.position;
       const zone = getZoneCoverageForDefender(
         { ...player, position: anchor, path: [] },
-        lineOfScrimmageYard
+        lineOfScrimmageYard,
       );
       if (!zone) continue;
 
       const candidates = players
         .filter(
           (offensePlayer) =>
-            offensePlayer.team === 'offense' &&
-            offenseEligibleRoles.has(offensePlayer.role)
+            offensePlayer.team === "offense" &&
+            offenseEligibleRoles.has(offensePlayer.role),
         )
         .map((offensePlayer) => ({
           id: offensePlayer.id,
-          point: map[offensePlayer.id] ?? offensePlayer.position
+          point: map[offensePlayer.id] ?? offensePlayer.position,
         }))
         .filter((candidate) => isPointInsideZone(candidate.point, zone));
 
       if (!candidates.length) continue;
       const sorted = [...candidates].sort((a, b) => a.id.localeCompare(b.id));
-      const choiceIndex = idSeed(
-        `${player.id}:${sorted.map((candidate) => candidate.id).join('|')}`
-      ) % sorted.length;
+      const choiceIndex =
+        idSeed(
+          `${player.id}:${sorted.map((candidate) => candidate.id).join("|")}`,
+        ) % sorted.length;
       const chosen = sorted[choiceIndex];
       const defenderStart = startPositions[player.id] ?? player.position;
       const maxTrackDistance = getPlayerDistancePerPlay(player) * progress;
 
       map[player.id] = clampFieldPoint(
-        moveToward(defenderStart, chosen.point, maxTrackDistance)
+        moveToward(defenderStart, chosen.point, maxTrackDistance),
       );
     }
   }
 
   const assignedRunCarrier = players.find(
-    (player) => player.team === 'offense' && player.assignment === 'run'
+    (player) => player.team === "offense" && player.assignment === "run",
   );
   const runCarrier =
-    assignedRunCarrier &&
-    runBallCarrierOverrideId
-      ? players.find((player) => player.id === runBallCarrierOverrideId) ??
-        assignedRunCarrier
+    assignedRunCarrier && runBallCarrierOverrideId
+      ? (players.find((player) => player.id === runBallCarrierOverrideId) ??
+        assignedRunCarrier)
       : assignedRunCarrier;
 
-  let qbPosition = map['qb'];
+  let qbPosition = map["qb"];
   if (!runCarrier && qbPosition) {
-    const qbStart = startPositions['qb'] ?? qbPosition;
-    const dropbackProgress = Math.min(1, progress / QB_DROPBACK_COMPLETE_PROGRESS);
-    map['qb'] = clampFieldPoint({
+    const qbStart = startPositions["qb"] ?? qbPosition;
+    const dropbackProgress = Math.min(
+      1,
+      progress / QB_DROPBACK_COMPLETE_PROGRESS,
+    );
+    map["qb"] = clampFieldPoint({
       x: qbStart.x,
-      y: qbStart.y + QB_DROPBACK_YARDS * dropbackProgress
+      y: qbStart.y + QB_DROPBACK_YARDS * dropbackProgress,
     });
-    qbPosition = map['qb'];
+    qbPosition = map["qb"];
   }
 
   const getNearestPursuerPoint = (
     origin: Point,
     defenders: Player[],
-    excludedDefenderIds: Set<string>
+    excludedDefenderIds: Set<string>,
   ): { id: string; point: Point } | undefined => {
     let nearest:
       | {
@@ -296,7 +340,7 @@ export const computeFramePositions = (
     if (!nearest) return undefined;
     return {
       id: nearest.id,
-      point: nearest.point
+      point: nearest.point,
     };
   };
 
@@ -304,8 +348,8 @@ export const computeFramePositions = (
     const pursuitTarget = qbPosition ?? blitzPursuitTarget;
     for (const defender of players) {
       if (
-        defender.team !== 'defense' ||
-        (defender.role !== 'DL' && defender.assignment !== 'blitz')
+        defender.team !== "defense" ||
+        (defender.role !== "DL" && defender.assignment !== "blitz")
       ) {
         continue;
       }
@@ -317,7 +361,7 @@ export const computeFramePositions = (
       const defenderStart = startPositions[defender.id] ?? defender.position;
       const maxPursuitDistance = getPlayerDistancePerPlay(defender) * progress;
       map[defender.id] = clampFieldPoint(
-        moveToward(defenderStart, pursuitTarget, maxPursuitDistance)
+        moveToward(defenderStart, pursuitTarget, maxPursuitDistance),
       );
     }
 
@@ -325,14 +369,14 @@ export const computeFramePositions = (
     if (qbPosition) {
       const rushingDefenders = players.filter(
         (player) =>
-          player.team === 'defense' &&
-          (player.role === 'DL' || player.assignment === 'blitz')
+          player.team === "defense" &&
+          (player.role === "DL" || player.assignment === "blitz"),
       );
       const claimedRushers = new Set<string>();
       for (const blocker of players) {
         if (
-          blocker.team !== 'offense' ||
-          blocker.assignment !== 'block' ||
+          blocker.team !== "offense" ||
+          blocker.assignment !== "block" ||
           !offensiveLineRoles.has(blocker.role)
         ) {
           continue;
@@ -342,14 +386,14 @@ export const computeFramePositions = (
         const nearestRusher = getNearestPursuerPoint(
           blockerStart,
           rushingDefenders,
-          claimedRushers
+          claimedRushers,
         );
         if (!nearestRusher) continue;
         claimedRushers.add(nearestRusher.id);
         const protectionPoint = lerp(
           qbPosition,
           nearestRusher.point,
-          PASS_PROTECTION_ANCHOR
+          PASS_PROTECTION_ANCHOR,
         );
         const maxSetY =
           lineOfScrimmageYard !== undefined
@@ -359,12 +403,12 @@ export const computeFramePositions = (
           x: protectionPoint.x,
           y: Math.min(
             maxSetY,
-            Math.min(protectionPoint.y, qbPosition.y - MIN_OL_QB_BUFFER_YARDS)
-          )
+            Math.min(protectionPoint.y, qbPosition.y - MIN_OL_QB_BUFFER_YARDS),
+          ),
         };
         const maxDistance = getPlayerDistancePerPlay(blocker) * progress;
         map[blocker.id] = clampFieldPoint(
-          moveToward(blockerStart, clampedProtectionPoint, maxDistance)
+          moveToward(blockerStart, clampedProtectionPoint, maxDistance),
         );
       }
 
@@ -372,7 +416,8 @@ export const computeFramePositions = (
       const engagedRushers = new Set<string>();
       const engagedBlockers = new Set<string>();
       for (const blocker of players) {
-        if (blocker.team !== 'offense' || blocker.assignment !== 'block') continue;
+        if (blocker.team !== "offense" || blocker.assignment !== "block")
+          continue;
         if (engagedBlockers.has(blocker.id)) continue;
         const blockerPoint = map[blocker.id] ?? blocker.position;
 
@@ -393,14 +438,18 @@ export const computeFramePositions = (
           }
         }
 
-        if (!nearestRusher || nearestRusher.distance > BLOCK_ENGAGEMENT_RADIUS_YARDS) continue;
+        if (
+          !nearestRusher ||
+          nearestRusher.distance > BLOCK_ENGAGEMENT_RADIUS_YARDS
+        )
+          continue;
 
         engagedBlockers.add(blocker.id);
         engagedRushers.add(nearestRusher.id);
         if (!passBlockFreezeState.frozenByDefender[nearestRusher.id]) {
           passBlockFreezeState.frozenByDefender[nearestRusher.id] = {
             x: nearestRusher.point.x,
-            y: nearestRusher.point.y
+            y: nearestRusher.point.y,
           };
         }
         const dx = nearestRusher.point.x - blockerPoint.x;
@@ -410,7 +459,7 @@ export const computeFramePositions = (
           distance > 0.0001
             ? {
                 x: (dx / distance) * BLOCK_STANDOFF_YARDS,
-                y: (dy / distance) * BLOCK_STANDOFF_YARDS
+                y: (dy / distance) * BLOCK_STANDOFF_YARDS,
               }
             : { x: 0, y: -BLOCK_STANDOFF_YARDS };
 
@@ -418,7 +467,7 @@ export const computeFramePositions = (
           passBlockFreezeState.frozenByDefender[nearestRusher.id] ??
           clampFieldPoint({
             x: blockerPoint.x + blockerOffset.x,
-            y: blockerPoint.y + blockerOffset.y
+            y: blockerPoint.y + blockerOffset.y,
           });
       }
     }
@@ -427,29 +476,33 @@ export const computeFramePositions = (
   if (runCarrier) {
     const runnerPoint = map[runCarrier.id] ?? runCarrier.position;
     for (const defender of players) {
-      if (defender.team !== 'defense') continue;
+      if (defender.team !== "defense") continue;
       const defenderStart = startPositions[defender.id] ?? defender.position;
       const maxPursuitDistance = getPlayerDistancePerPlay(defender) * progress;
       map[defender.id] = clampFieldPoint(
-        moveToward(defenderStart, runnerPoint, maxPursuitDistance)
+        moveToward(defenderStart, runnerPoint, maxPursuitDistance),
       );
     }
   }
 
   if (runBlockEngagements) {
-    for (const [defenderId, engagement] of Object.entries(runBlockEngagements)) {
+    for (const [defenderId, engagement] of Object.entries(
+      runBlockEngagements,
+    )) {
       if (progress < engagement.progress) continue;
       const blockerPoint = map[engagement.blockerId];
       if (!blockerPoint) continue;
       map[defenderId] = clampFieldPoint({
         x: blockerPoint.x + engagement.blockerOffset.x,
-        y: blockerPoint.y + engagement.blockerOffset.y
+        y: blockerPoint.y + engagement.blockerOffset.y,
       });
     }
   }
 
   // Keep player pieces from visually occupying the same point during simulation.
-  const frozenDefenderIds = new Set(Object.keys(passBlockFreezeState.frozenByDefender));
+  const frozenDefenderIds = new Set(
+    Object.keys(passBlockFreezeState.frozenByDefender),
+  );
   for (let pass = 0; pass < OVERLAP_RESOLUTION_PASSES; pass += 1) {
     for (let i = 0; i < players.length; i += 1) {
       const first = players[i];
@@ -465,7 +518,8 @@ export const computeFramePositions = (
         const distance = Math.hypot(dx, dy);
         if (distance >= MIN_PLAYER_SEPARATION_YARDS) continue;
 
-        const overlap = (MIN_PLAYER_SEPARATION_YARDS - Math.max(distance, 0.0001)) / 2;
+        const overlap =
+          (MIN_PLAYER_SEPARATION_YARDS - Math.max(distance, 0.0001)) / 2;
         const normalX = distance > 0.0001 ? dx / distance : 1;
         const normalY = distance > 0.0001 ? dy / distance : 0;
 
@@ -475,25 +529,25 @@ export const computeFramePositions = (
         if (firstFrozen) {
           map[second.id] = clampFieldPoint({
             x: secondPoint.x + normalX * overlap * 2,
-            y: secondPoint.y + normalY * overlap * 2
+            y: secondPoint.y + normalY * overlap * 2,
           });
           continue;
         }
         if (secondFrozen) {
           map[first.id] = clampFieldPoint({
             x: firstPoint.x - normalX * overlap * 2,
-            y: firstPoint.y - normalY * overlap * 2
+            y: firstPoint.y - normalY * overlap * 2,
           });
           continue;
         }
 
         map[first.id] = clampFieldPoint({
           x: firstPoint.x - normalX * overlap,
-          y: firstPoint.y - normalY * overlap
+          y: firstPoint.y - normalY * overlap,
         });
         map[second.id] = clampFieldPoint({
           x: secondPoint.x + normalX * overlap,
-          y: secondPoint.y + normalY * overlap
+          y: secondPoint.y + normalY * overlap,
         });
       }
     }

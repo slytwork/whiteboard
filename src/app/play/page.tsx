@@ -123,6 +123,25 @@ const movePointToward = (from: Point, to: Point, maxDistance: number): Point => 
   };
 };
 
+const INITIAL_STEM_COMPLETION_BUFFER_YARDS = 0.2;
+const isReceiverInSecondStem = (
+  receiver: Player,
+  currentPosition: Point,
+): boolean => {
+  if (receiver.path.length < 2) return true;
+  const firstStemTarget = receiver.path[0];
+  const stemDx = firstStemTarget.x - receiver.position.x;
+  const stemDy = firstStemTarget.y - receiver.position.y;
+  const stemLength = Math.hypot(stemDx, stemDy);
+  if (stemLength <= 0.001) return true;
+
+  const travelDx = currentPosition.x - receiver.position.x;
+  const travelDy = currentPosition.y - receiver.position.y;
+  const projectedTravel = (travelDx * stemDx + travelDy * stemDy) / stemLength;
+
+  return projectedTravel >= stemLength - INITIAL_STEM_COMPLETION_BUFFER_YARDS;
+};
+
 const getNearestUnblockedDefenderWithinTackleRadius = (
   defenders: { id: string; position: Point }[],
   carrierPoint: Point,
@@ -305,12 +324,9 @@ const getBestOpenPassTargetAtFrame = (
   framePositions: Record<string, Point>,
   lineOfScrimmageYard: number,
 ): { id: string; gainedYards: number } | undefined => {
-  const offenseEligible = players
-    .filter((player) => player.team === "offense" && ELIGIBLE_ROLES.has(player.role))
-    .map((player) => ({
-      id: player.id,
-      position: framePositions[player.id] ?? player.position,
-    }));
+  const offenseEligible = players.filter((player) =>
+    isPassEligibleReceiver(player),
+  );
   const defenders = players.map((player) => ({
     ...player,
     position: framePositions[player.id] ?? player.position,
@@ -325,17 +341,33 @@ const getBestOpenPassTargetAtFrame = (
   const candidates = offenseEligible
     .filter(
       (receiver) =>
-        !zoneAreas.some((zone) => isPointInsideZone(receiver.position, zone)) &&
-        getNearestDefenderDistance(receiver.position, allDefenderPoints) >
+        isReceiverInSecondStem(
+          receiver,
+          framePositions[receiver.id] ?? receiver.position,
+        ) &&
+        !zoneAreas.some((zone) =>
+          isPointInsideZone(framePositions[receiver.id] ?? receiver.position, zone),
+        ) &&
+        getNearestDefenderDistance(
+          framePositions[receiver.id] ?? receiver.position,
+          allDefenderPoints,
+        ) >
           QB_THROW_CATCH_RADIUS_YARDS,
     )
     .map((receiver) => ({
       id: receiver.id,
-      depthYards: lineOfScrimmageYard - receiver.position.y,
-      gainedYards: Math.max(0, lineOfScrimmageYard - receiver.position.y),
+      depthYards:
+        lineOfScrimmageYard - (framePositions[receiver.id] ?? receiver.position).y,
+      gainedYards: Math.max(
+        0,
+        lineOfScrimmageYard - (framePositions[receiver.id] ?? receiver.position).y,
+      ),
       nearbyDefenders: allDefenderPoints.filter(
         (defenderPoint) =>
-          distanceBetweenPoints(defenderPoint, receiver.position) <=
+          distanceBetweenPoints(
+            defenderPoint,
+            framePositions[receiver.id] ?? receiver.position,
+          ) <=
           QB_NEARBY_DEFENDER_RADIUS_YARDS,
       ).length,
     }))
@@ -706,6 +738,10 @@ const getPreSnapPenalty = (
 const toDisplayYards = (yards: number) => Math.max(1, Math.round(yards));
 const isPathlessAssignment = (assignment: AssignmentType) =>
   assignment === "man" || assignment === "blitz";
+const isPassEligibleReceiver = (player: Player): boolean =>
+  player.team === "offense" &&
+  ELIGIBLE_ROLES.has(player.role) &&
+  player.assignment !== "block";
 
 const buildNextSituationAfterGain = (
   current: Situation,
@@ -1201,8 +1237,8 @@ export default function Home() {
     finalBallCarrierId?: string,
   ) => {
     setQueuedRoundSituation(undefined);
-    const offenseEligible = finalPlayers.filter(
-      (p) => p.team === "offense" && ELIGIBLE_ROLES.has(p.role),
+    const offenseEligible = finalPlayers.filter((p) =>
+      isPassEligibleReceiver(p),
     );
     const defenders = finalPlayers.filter((p) => p.team === "defense");
     const blockers = finalPlayers.filter(
