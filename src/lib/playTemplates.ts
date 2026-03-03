@@ -5,6 +5,7 @@ type TemplatePlayerUpdate = {
   assignment: AssignmentType;
   path: Point[];
   manTargetId?: string;
+  preSnapPosition?: Point;
 };
 
 export type PlayTemplate = {
@@ -21,6 +22,12 @@ const from = (player: Player | undefined, dx: number, dy: number): Point =>
   clampFieldPoint({
     x: (player?.position.x ?? 0) + dx,
     y: (player?.position.y ?? 0) + dy,
+  });
+
+const defenseSpot = (losYard: number, x: number, depth: number): Point =>
+  clampFieldPoint({
+    x,
+    y: losYard - depth,
   });
 
 const offenseTemplates: PlayTemplate[] = [
@@ -102,6 +109,268 @@ const defenseTemplates: PlayTemplate[] = [
     },
   },
   {
+    id: "cover-0",
+    team: "defense",
+    label: "Cover 0",
+    description: "Zero-high man pressure with six rushers and tight press alignment.",
+    buildAssignments: (_players, losYard) => ({
+      dl1: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 21, -2.6)],
+        preSnapPosition: defenseSpot(losYard, 20.5, 1),
+      },
+      dl2: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 24.5, -2.8)],
+        preSnapPosition: defenseSpot(losYard, 24, 1),
+      },
+      dl3: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 27.5, -2.8)],
+        preSnapPosition: defenseSpot(losYard, 28, 1),
+      },
+      dl4: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 31.5, -2.6)],
+        preSnapPosition: defenseSpot(losYard, 31.5, 1),
+      },
+      lb1: {
+        assignment: "man",
+        path: [],
+        manTargetId: "rb",
+        preSnapPosition: defenseSpot(losYard, 29, 2.4),
+      },
+      lb2: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 26.2, -3.8)],
+        preSnapPosition: defenseSpot(losYard, 26, 2),
+      },
+      lb3: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 23.8, -3.6)],
+        preSnapPosition: defenseSpot(losYard, 23.8, 2.2),
+      },
+      db1: {
+        assignment: "man",
+        path: [],
+        manTargetId: "wr1",
+        preSnapPosition: defenseSpot(losYard, 8, 1.8),
+      },
+      db2: {
+        assignment: "man",
+        path: [],
+        manTargetId: "te",
+        preSnapPosition: defenseSpot(losYard, 34.5, 2),
+      },
+      db3: {
+        assignment: "man",
+        path: [],
+        manTargetId: "wr3",
+        preSnapPosition: defenseSpot(losYard, 16, 2),
+      },
+      db4: {
+        assignment: "man",
+        path: [],
+        manTargetId: "wr2",
+        preSnapPosition: defenseSpot(losYard, 44, 1.8),
+      },
+    }),
+  },
+  {
+    id: "cover-1",
+    team: "defense",
+    label: "Cover 1",
+    description: "Single-high safety with man coverage underneath and a 4-man rush.",
+    buildAssignments: (_players, losYard) => ({
+      dl1: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 21, -2.6)],
+        preSnapPosition: defenseSpot(losYard, 20, 1),
+      },
+      dl2: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 24.5, -2.8)],
+        preSnapPosition: defenseSpot(losYard, 24, 1),
+      },
+      dl3: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 27.5, -2.8)],
+        preSnapPosition: defenseSpot(losYard, 28, 1),
+      },
+      dl4: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 31, -2.6)],
+        preSnapPosition: defenseSpot(losYard, 32, 1),
+      },
+      lb1: {
+        assignment: "man",
+        path: [],
+        manTargetId: "te",
+        preSnapPosition: defenseSpot(losYard, 34, 3),
+      },
+      lb2: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 26, 6.5)],
+        preSnapPosition: defenseSpot(losYard, 26, 3.5),
+      },
+      lb3: {
+        assignment: "man",
+        path: [],
+        manTargetId: "rb",
+        preSnapPosition: defenseSpot(losYard, 29, 3.2),
+      },
+      db1: {
+        assignment: "man",
+        path: [],
+        manTargetId: "wr1",
+        preSnapPosition: defenseSpot(losYard, 8, 3),
+      },
+      db2: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 26.65, 14)],
+        preSnapPosition: defenseSpot(losYard, 26.65, 9),
+      },
+      db3: {
+        assignment: "man",
+        path: [],
+        manTargetId: "wr3",
+        preSnapPosition: defenseSpot(losYard, 16, 3.2),
+      },
+      db4: {
+        assignment: "man",
+        path: [],
+        manTargetId: "wr2",
+        preSnapPosition: defenseSpot(losYard, 44, 3),
+      },
+    }),
+  },
+  {
+    id: "cover-2",
+    team: "defense",
+    label: "Cover 2",
+    description: "Two-high shell with corners in the flats and five underneath zones.",
+    buildAssignments: (_players, losYard) => ({
+      dl1: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 20.8, -2.6)],
+        preSnapPosition: defenseSpot(losYard, 20, 1),
+      },
+      dl2: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 24.2, -2.8)],
+        preSnapPosition: defenseSpot(losYard, 24, 1),
+      },
+      dl3: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 27.8, -2.8)],
+        preSnapPosition: defenseSpot(losYard, 28, 1),
+      },
+      dl4: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 31.2, -2.6)],
+        preSnapPosition: defenseSpot(losYard, 32, 1),
+      },
+      lb1: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 20.5, 7)],
+        preSnapPosition: defenseSpot(losYard, 20, 4),
+      },
+      lb2: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 26.5, 7.2)],
+        preSnapPosition: defenseSpot(losYard, 26, 4),
+      },
+      lb3: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 32.5, 7)],
+        preSnapPosition: defenseSpot(losYard, 32, 4),
+      },
+      db1: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 12.5, 3.5)],
+        preSnapPosition: defenseSpot(losYard, 8.5, 4),
+      },
+      db2: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 19.5, 14)],
+        preSnapPosition: defenseSpot(losYard, 19.5, 10),
+      },
+      db3: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 33.8, 14)],
+        preSnapPosition: defenseSpot(losYard, 33.8, 10),
+      },
+      db4: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 40.8, 3.5)],
+        preSnapPosition: defenseSpot(losYard, 44, 4),
+      },
+    }),
+  },
+  {
+    id: "cover-4",
+    team: "defense",
+    label: "Cover 4",
+    description: "Quarters shell with four deep defenders and underneath hook/curl support.",
+    buildAssignments: (_players, losYard) => ({
+      dl1: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 20.8, -2.6)],
+        preSnapPosition: defenseSpot(losYard, 20, 1),
+      },
+      dl2: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 24.2, -2.8)],
+        preSnapPosition: defenseSpot(losYard, 24, 1),
+      },
+      dl3: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 27.8, -2.8)],
+        preSnapPosition: defenseSpot(losYard, 28, 1),
+      },
+      dl4: {
+        assignment: "blitz",
+        path: [defenseSpot(losYard, 31.2, -2.6)],
+        preSnapPosition: defenseSpot(losYard, 32, 1),
+      },
+      lb1: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 20.5, 6.8)],
+        preSnapPosition: defenseSpot(losYard, 20, 4),
+      },
+      lb2: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 26.5, 7)],
+        preSnapPosition: defenseSpot(losYard, 26, 4),
+      },
+      lb3: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 32.5, 6.8)],
+        preSnapPosition: defenseSpot(losYard, 32, 4),
+      },
+      db1: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 10.5, 13.5)],
+        preSnapPosition: defenseSpot(losYard, 8.5, 8),
+      },
+      db2: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 21, 14)],
+        preSnapPosition: defenseSpot(losYard, 20.5, 8.5),
+      },
+      db3: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 32, 14)],
+        preSnapPosition: defenseSpot(losYard, 31.5, 8.5),
+      },
+      db4: {
+        assignment: "zone",
+        path: [defenseSpot(losYard, 42.8, 13.5)],
+        preSnapPosition: defenseSpot(losYard, 44, 8),
+      },
+    }),
+  },
+  {
     id: "cover-1-blitz",
     team: "defense",
     label: "Cover 1 Blitz",
@@ -157,6 +426,7 @@ export const applyPlayTemplate = (players: Player[], team: Team, templateId: str
 
     return {
       ...player,
+      position: update.preSnapPosition ?? player.position,
       assignment: update.assignment,
       path: update.path,
       manTargetId: update.manTargetId,
