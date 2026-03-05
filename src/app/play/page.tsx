@@ -8,6 +8,7 @@ import { RevealOverlay } from "@/components/RevealOverlay";
 import { Scoreboard } from "@/components/Scoreboard";
 import {
   clampFieldPoint,
+  FIELD_WIDTH_YARDS,
   PLAYABLE_START_YARD,
   PLAYABLE_END_YARD,
   Point,
@@ -43,8 +44,8 @@ const ELIGIBLE_ROLES = new Set(["WR", "TE", "RB"]);
 
 type Phase =
   | "offense-design"
-  | "pass-device"
   | "defense-design"
+  | "ready-reveal"
   | "animating"
   | "evaluation"
   | "discussion"
@@ -68,6 +69,10 @@ const QB_NEARBY_DEFENDER_RADIUS_YARDS = 4;
 const PASS_MIN_READ_TIME_MS = 1000;
 const RUN_TACKLE_SAMPLE_STEPS = 240;
 const YAC_DEFENDER_PURSUIT_YARDS = 8;
+const YAC_BLOCKER_PURSUIT_YARDS = 7.5;
+const YAC_BLOCKER_LEAD_GAP_YARDS = 0.9;
+const YAC_CARRIER_FOLLOW_BLEND_YARDS = 2.4;
+const YAC_LEVERAGE_LANE_OFFSET_YARDS = 1.1;
 const MIN_PLAYER_SEPARATION_YARDS = 1.05;
 
 type RunTackleResult = {
@@ -110,7 +115,11 @@ const lerpPoint = (from: Point, to: Point, t: number): Point => ({
   y: from.y + (to.y - from.y) * t,
 });
 
-const movePointToward = (from: Point, to: Point, maxDistance: number): Point => {
+const movePointToward = (
+  from: Point,
+  to: Point,
+  maxDistance: number,
+): Point => {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const distance = Math.hypot(dx, dy);
@@ -157,6 +166,20 @@ const getNearestUnblockedDefenderWithinTackleRadius = (
   }
   if (!nearest || nearest.distance > RUN_TACKLE_RADIUS_YARDS) return undefined;
   return { id: nearest.id, position: nearest.position };
+};
+
+const getNearestDefender = (
+  origin: Point,
+  defenders: { id: string; position: Point }[],
+): { id: string; position: Point } | undefined => {
+  let nearest: { id: string; position: Point; distance: number } | undefined;
+  for (const defender of defenders) {
+    const distance = distanceBetweenPoints(origin, defender.position);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { ...defender, distance };
+    }
+  }
+  return nearest ? { id: nearest.id, position: nearest.position } : undefined;
 };
 
 const resolveNoOverlapPositions = (
@@ -277,7 +300,8 @@ const getBallStateAtProgress = (
   }
 
   if (plan.completionTargetId) {
-    const targetPosition = framePositions[plan.completionTargetId] ?? qbPosition;
+    const targetPosition =
+      framePositions[plan.completionTargetId] ?? qbPosition;
     const throwStartProgress = plan.passThrowStartProgress ?? 0;
     const throwTravelDuration = Math.max(
       0.01,
@@ -287,8 +311,7 @@ const getBallStateAtProgress = (
       return { position: qbPosition, carrierId: QB_ID };
     }
     if (progress < throwStartProgress + throwTravelDuration) {
-      const passT =
-        (progress - throwStartProgress) / throwTravelDuration;
+      const passT = (progress - throwStartProgress) / throwTravelDuration;
       return {
         position: lerpPoint(
           plan.passThrowStartPoint ?? qbPosition,
@@ -346,29 +369,32 @@ const getBestOpenPassTargetAtFrame = (
           framePositions[receiver.id] ?? receiver.position,
         ) &&
         !zoneAreas.some((zone) =>
-          isPointInsideZone(framePositions[receiver.id] ?? receiver.position, zone),
+          isPointInsideZone(
+            framePositions[receiver.id] ?? receiver.position,
+            zone,
+          ),
         ) &&
         getNearestDefenderDistance(
           framePositions[receiver.id] ?? receiver.position,
           allDefenderPoints,
-        ) >
-          QB_THROW_CATCH_RADIUS_YARDS,
+        ) > QB_THROW_CATCH_RADIUS_YARDS,
     )
     .map((receiver) => ({
       id: receiver.id,
       depthYards:
-        lineOfScrimmageYard - (framePositions[receiver.id] ?? receiver.position).y,
+        lineOfScrimmageYard -
+        (framePositions[receiver.id] ?? receiver.position).y,
       gainedYards: Math.max(
         0,
-        lineOfScrimmageYard - (framePositions[receiver.id] ?? receiver.position).y,
+        lineOfScrimmageYard -
+          (framePositions[receiver.id] ?? receiver.position).y,
       ),
       nearbyDefenders: allDefenderPoints.filter(
         (defenderPoint) =>
           distanceBetweenPoints(
             defenderPoint,
             framePositions[receiver.id] ?? receiver.position,
-          ) <=
-          QB_NEARBY_DEFENDER_RADIUS_YARDS,
+          ) <= QB_NEARBY_DEFENDER_RADIUS_YARDS,
       ).length,
     }))
     .sort((a, b) => {
@@ -412,8 +438,11 @@ const getQuarterbackTacklerAtFrame = (
   return tackler?.id;
 };
 
-const getPassCompletionProgress = (plan: RevealBallPlan): number | undefined => {
-  if (!plan.completionTargetId || plan.passThrowStartProgress === undefined) return undefined;
+const getPassCompletionProgress = (
+  plan: RevealBallPlan,
+): number | undefined => {
+  if (!plan.completionTargetId || plan.passThrowStartProgress === undefined)
+    return undefined;
   const throwTravelDuration = Math.max(
     0.01,
     Math.min(PASS_TRAVEL_DURATION_PROGRESS, 1 - plan.passThrowStartProgress),
@@ -426,14 +455,17 @@ const applyAfterCatchEffort = (
   framePositions: Record<string, Point>,
   plan: RevealBallPlan,
   progress: number,
-): {
-  positions: Record<string, Point>;
-  ballState: BallState;
-  tacklerId?: string;
-} | undefined => {
+):
+  | {
+      positions: Record<string, Point>;
+      ballState: BallState;
+      tacklerId?: string;
+    }
+  | undefined => {
   if (!plan.completionTargetId) return undefined;
   const completionProgress = getPassCompletionProgress(plan);
-  if (completionProgress === undefined || progress < completionProgress) return undefined;
+  if (completionProgress === undefined || progress < completionProgress)
+    return undefined;
 
   const effortProgress = Math.min(
     1,
@@ -461,20 +493,126 @@ const applyAfterCatchEffort = (
     [receiverId]: ballCarrierPoint,
   };
 
+  const blockers = players
+    .filter(
+      (player) => player.team === "offense" && player.assignment === "block",
+    )
+    .map((player) => ({
+      id: player.id,
+      position: framePositions[player.id] ?? player.position,
+    }));
+  const defenderStarts = players
+    .filter((player) => player.team === "defense")
+    .map((player) => ({
+      id: player.id,
+      position: framePositions[player.id] ?? player.position,
+    }));
+
+  for (const blocker of blockers) {
+    const nearestDefender = getNearestDefender(
+      blocker.position,
+      defenderStarts,
+    );
+    const rawLeadTarget = nearestDefender
+      ? {
+          x: (ballCarrierPoint.x + nearestDefender.position.x) / 2,
+          y: Math.min(
+            ballCarrierPoint.y - YAC_BLOCKER_LEAD_GAP_YARDS,
+            (ballCarrierPoint.y + nearestDefender.position.y) / 2,
+          ),
+        }
+      : {
+          x: ballCarrierPoint.x,
+          y: ballCarrierPoint.y - YAC_BLOCKER_LEAD_GAP_YARDS,
+        };
+    const movedBlocker = movePointToward(
+      blocker.position,
+      rawLeadTarget,
+      YAC_BLOCKER_PURSUIT_YARDS * effortProgress,
+    );
+    adjustedPositions[blocker.id] = clampFieldPoint({
+      x: movedBlocker.x,
+      y: Math.min(
+        movedBlocker.y,
+        ballCarrierPoint.y - YAC_BLOCKER_LEAD_GAP_YARDS,
+      ),
+    });
+  }
+
+  const leadBlockers = blockers
+    .map((blocker) => ({
+      id: blocker.id,
+      position: adjustedPositions[blocker.id] ?? blocker.position,
+    }))
+    .filter((blocker) => blocker.position.y < ballCarrierPoint.y);
+  if (leadBlockers.length) {
+    const leadBlocker = [...leadBlockers].sort(
+      (a, b) =>
+        distanceBetweenPoints(a.position, ballCarrierPoint) -
+        distanceBetweenPoints(b.position, ballCarrierPoint),
+    )[0];
+    const nearestDefenderToLead = getNearestDefender(
+      leadBlocker.position,
+      defenderStarts,
+    );
+    const fieldCenterX = FIELD_WIDTH_YARDS / 2;
+    const blockerOutsideDistance = Math.abs(
+      leadBlocker.position.x - fieldCenterX,
+    );
+    const defenderOutsideDistance = nearestDefenderToLead
+      ? Math.abs(nearestDefenderToLead.position.x - fieldCenterX)
+      : 0;
+    const leverageSign =
+      Math.sign(leadBlocker.position.x - fieldCenterX) ||
+      (nearestDefenderToLead
+        ? Math.sign(nearestDefenderToLead.position.x - fieldCenterX)
+        : 1);
+    const blockerHasOutsideLeverage =
+      nearestDefenderToLead && blockerOutsideDistance > defenderOutsideDistance;
+    const laneDirection =
+      blockerHasOutsideLeverage && leverageSign
+        ? leverageSign
+        : leverageSign
+          ? -leverageSign
+          : 0;
+    const laneX = clampFieldPoint({
+      x:
+        leadBlocker.position.x + laneDirection * YAC_LEVERAGE_LANE_OFFSET_YARDS,
+      y: leadBlocker.position.y,
+    }).x;
+    const followTarget = {
+      x: laneX,
+      y: leadBlocker.position.y + YAC_BLOCKER_LEAD_GAP_YARDS,
+    };
+    const followedCarrier = movePointToward(
+      ballCarrierPoint,
+      followTarget,
+      YAC_CARRIER_FOLLOW_BLEND_YARDS * effortProgress,
+    );
+    adjustedPositions[receiverId] = clampFieldPoint({
+      x: followedCarrier.x,
+      y: Math.max(followedCarrier.y, leadBlocker.position.y + 0.5),
+    });
+  }
+
+  const currentCarrierPoint = adjustedPositions[receiverId] ?? ballCarrierPoint;
+
   for (const player of players) {
     if (player.team !== "defense") continue;
     const defenderPoint = framePositions[player.id] ?? player.position;
     adjustedPositions[player.id] = clampFieldPoint(
       movePointToward(
         defenderPoint,
-        ballCarrierPoint,
+        currentCarrierPoint,
         YAC_DEFENDER_PURSUIT_YARDS * effortProgress,
       ),
     );
   }
 
-  const blockers = players
-    .filter((player) => player.team === "offense" && player.assignment === "block")
+  const liveBlockers = players
+    .filter(
+      (player) => player.team === "offense" && player.assignment === "block",
+    )
     .map((player) => ({
       position: adjustedPositions[player.id] ?? player.position,
     }));
@@ -484,16 +622,16 @@ const applyAfterCatchEffort = (
       id: player.id,
       position: adjustedPositions[player.id] ?? player.position,
     }));
-  const blockedDefenderIds = getBlockedDefenderIds(blockers, defenders);
+  const blockedDefenderIds = getBlockedDefenderIds(liveBlockers, defenders);
   const tackler = getNearestUnblockedDefenderWithinTackleRadius(
     defenders,
-    ballCarrierPoint,
+    currentCarrierPoint,
     blockedDefenderIds,
   );
 
   return {
     positions: adjustedPositions,
-    ballState: { position: ballCarrierPoint, carrierId: receiverId },
+    ballState: { position: currentCarrierPoint, carrierId: receiverId },
     tacklerId: tackler?.id,
   };
 };
@@ -546,7 +684,8 @@ const findRunBlockEngagements = (
           nearest = { id: defender.id, distance: defenderDistance };
         }
       }
-      if (!nearest || nearest.distance > BLOCK_ENGAGEMENT_RADIUS_YARDS) continue;
+      if (!nearest || nearest.distance > BLOCK_ENGAGEMENT_RADIUS_YARDS)
+        continue;
       engagedBlockerIds.add(blocker.id);
       engagedDefenderIds.add(nearest.id);
       const defenderPoint =
@@ -607,14 +746,13 @@ const findRunTackle = (
       position: frame[defender.id] ?? defender.position,
     }));
     const qbPoint = frame[QB_ID];
-    const qbTackler =
-      qbPoint
-        ? getNearestUnblockedDefenderWithinTackleRadius(
-            defenderFrame,
-            qbPoint,
-            blockedDefenderIds,
-          )
-        : undefined;
+    const qbTackler = qbPoint
+      ? getNearestUnblockedDefenderWithinTackleRadius(
+          defenderFrame,
+          qbPoint,
+          blockedDefenderIds,
+        )
+      : undefined;
     if (qbPoint && qbTackler) {
       return {
         ballCarrierId: QB_ID,
@@ -748,8 +886,14 @@ const buildNextSituationAfterGain = (
   gainedYards: number,
 ): Situation => {
   const positiveGain = Math.max(0, gainedYards);
-  const nextBallSpot = Math.max(PLAYABLE_START_YARD, current.ballSpotYard - positiveGain);
-  const yardsToGoal = Math.max(1, Math.ceil(nextBallSpot - PLAYABLE_START_YARD));
+  const nextBallSpot = Math.max(
+    PLAYABLE_START_YARD,
+    current.ballSpotYard - positiveGain,
+  );
+  const yardsToGoal = Math.max(
+    1,
+    Math.ceil(nextBallSpot - PLAYABLE_START_YARD),
+  );
   const nextRequired = current.requiredYards - positiveGain;
 
   if (nextRequired <= 0) {
@@ -758,7 +902,7 @@ const buildNextSituationAfterGain = (
       ...current,
       down: 1,
       requiredYards: resetDistance,
-      ballSpotYard: nextBallSpot
+      ballSpotYard: nextBallSpot,
     };
   }
 
@@ -766,7 +910,7 @@ const buildNextSituationAfterGain = (
     ...current,
     down: Math.min(current.down + 1, 4),
     requiredYards: toDisplayYards(nextRequired),
-    ballSpotYard: nextBallSpot
+    ballSpotYard: nextBallSpot,
   };
 };
 
@@ -1130,25 +1274,26 @@ export default function Home() {
     if (phase === "defense-design" && p.team !== "defense") return;
     setSelectedPlayerId(id);
 
-    if (!activeAssignment || !canApplyAssignmentToPlayer(activeAssignment, p)) return;
+    if (!activeAssignment || !canApplyAssignmentToPlayer(activeAssignment, p))
+      return;
     setPlayers((prev) =>
       enforceSingleRunCarrier(
         prev.map((player) =>
-        player.id === id
-          ? {
-              ...player,
-              assignment: activeAssignment,
-              path: isPathlessAssignment(activeAssignment) ? [] : player.path,
-              manTargetId:
-                activeAssignment === "man"
-                  ? prev.find(
-                      (candidate) =>
-                        candidate.team === "offense" &&
-                        ELIGIBLE_ROLES.has(candidate.role),
-                    )?.id
-                  : undefined,
-            }
-          : player,
+          player.id === id
+            ? {
+                ...player,
+                assignment: activeAssignment,
+                path: isPathlessAssignment(activeAssignment) ? [] : player.path,
+                manTargetId:
+                  activeAssignment === "man"
+                    ? prev.find(
+                        (candidate) =>
+                          candidate.team === "offense" &&
+                          ELIGIBLE_ROLES.has(candidate.role),
+                      )?.id
+                    : undefined,
+              }
+            : player,
         ),
       ),
     );
@@ -1166,21 +1311,21 @@ export default function Home() {
     setPlayers((prev) =>
       enforceSingleRunCarrier(
         prev.map((p) =>
-        p.id === selectedPlayerId
-          ? {
-              ...p,
-              assignment,
-              path: isPathlessAssignment(assignment) ? [] : p.path,
-              manTargetId:
-                assignment === "man"
-                  ? prev.find(
-                      (candidate) =>
-                        candidate.team === "offense" &&
-                        ELIGIBLE_ROLES.has(candidate.role),
-                    )?.id
-                  : undefined,
-            }
-          : p,
+          p.id === selectedPlayerId
+            ? {
+                ...p,
+                assignment,
+                path: isPathlessAssignment(assignment) ? [] : p.path,
+                manTargetId:
+                  assignment === "man"
+                    ? prev.find(
+                        (candidate) =>
+                          candidate.team === "offense" &&
+                          ELIGIBLE_ROLES.has(candidate.role),
+                      )?.id
+                    : undefined,
+              }
+            : p,
         ),
       ),
     );
@@ -1257,7 +1402,10 @@ export default function Home() {
     const zoneDefenders = activeDefenders.filter(
       (defender) => defender.assignment === "zone",
     );
-    const zoneCoverages = getZoneCoverageAreas(zoneDefenders, situation.ballSpotYard);
+    const zoneCoverages = getZoneCoverageAreas(
+      zoneDefenders,
+      situation.ballSpotYard,
+    );
     const zoneCoveredOffenseIds = getOffenseCoveredByZones(
       offenseEligible,
       zoneCoverages,
@@ -1274,7 +1422,8 @@ export default function Home() {
       const target = offenseEligible.find((player) => player.id === targetId);
       if (!target) continue;
       if (manRandomizedTargetIds.has(targetId)) continue;
-      const isTight = distanceBetweenPoints(defender.position, target.position) <= 2;
+      const isTight =
+        distanceBetweenPoints(defender.position, target.position) <= 2;
       if (isTight) {
         manCoveredTargetIds.add(targetId);
       }
@@ -1426,7 +1575,9 @@ export default function Home() {
 
     const openTargets = separation
       .filter((res) => {
-        const player = offenseEligible.find((candidate) => candidate.id === res.offensiveId);
+        const player = offenseEligible.find(
+          (candidate) => candidate.id === res.offensiveId,
+        );
         if (!player) return false;
         if (zoneCoveredOffenseIds.has(player.id)) return false;
         if (manRandomizedTargetIds.has(player.id)) return true;
@@ -1434,17 +1585,22 @@ export default function Home() {
         return res.isOpen;
       })
       .map((res) => {
-        const player = offenseEligible.find((candidate) => candidate.id === res.offensiveId)!;
+        const player = offenseEligible.find(
+          (candidate) => candidate.id === res.offensiveId,
+        )!;
         const rawGain = situation.ballSpotYard - player.position.y;
         return {
           player,
-          gainedYards: Math.max(0, rawGain)
+          gainedYards: Math.max(0, rawGain),
         };
       });
     openTargets.sort((a, b) => b.gainedYards - a.gainedYards);
     const bestOpenTarget = openTargets[0];
 
-    if (bestOpenTarget && bestOpenTarget.gainedYards >= situation.requiredYards) {
+    if (
+      bestOpenTarget &&
+      bestOpenTarget.gainedYards >= situation.requiredYards
+    ) {
       const nextOffenseWins = offenseWins + 1;
       setOffenseWins(nextOffenseWins);
       const nextSituation = buildNextSituationAfterGain(
@@ -1563,7 +1719,11 @@ export default function Home() {
         runBlockEngagements,
         getRunCarrierIdAtProgress(ballPlan, progress),
       );
-      const baseBallState = getBallStateAtProgress(basePositions, ballPlan, progress);
+      const baseBallState = getBallStateAtProgress(
+        basePositions,
+        ballPlan,
+        progress,
+      );
       const nextPositions = computeFramePositions(
         startPlayers,
         initialPositionsRef.current,
@@ -1593,21 +1753,13 @@ export default function Home() {
         }
       }
       const afterCatch = !ballPlan.isRunPlay
-        ? applyAfterCatchEffort(
-            startPlayers,
-            nextPositions,
-            ballPlan,
-            progress,
-          )
+        ? applyAfterCatchEffort(startPlayers, nextPositions, ballPlan, progress)
         : undefined;
       const resolvedPositions = afterCatch?.positions ?? nextPositions;
       const liveBallState =
         afterCatch?.ballState ??
         getBallStateAtProgress(resolvedPositions, ballPlan, progress);
-      if (
-        afterCatch?.tacklerId &&
-        afterCatch.ballState.carrierId
-      ) {
+      if (afterCatch?.tacklerId && afterCatch.ballState.carrierId) {
         const tackleResult: RunTackleResult = {
           ballCarrierId: afterCatch.ballState.carrierId,
           stopProgress: progress,
@@ -1628,7 +1780,8 @@ export default function Home() {
         setPlayers((prev) =>
           prev.map((player) => ({
             ...player,
-            position: tackleResult.frozenPositions[player.id] ?? player.position,
+            position:
+              tackleResult.frozenPositions[player.id] ?? player.position,
           })),
         );
         setTimeout(
@@ -1636,7 +1789,8 @@ export default function Home() {
             evaluateRound(
               startPlayers.map((player) => ({
                 ...player,
-                position: tackleResult.frozenPositions[player.id] ?? player.position,
+                position:
+                  tackleResult.frozenPositions[player.id] ?? player.position,
               })),
               getManRandomizedTargetIds(
                 startPlayers,
@@ -1687,7 +1841,8 @@ export default function Home() {
             evaluateRound(
               startPlayers.map((player) => ({
                 ...player,
-                position: sackResult.frozenPositions[player.id] ?? player.position,
+                position:
+                  sackResult.frozenPositions[player.id] ?? player.position,
               })),
               getManRandomizedTargetIds(
                 startPlayers,
@@ -1721,8 +1876,7 @@ export default function Home() {
               startPlayers.map((player) => ({
                 ...player,
                 position:
-                  runTackleResult.frozenPositions[player.id] ??
-                  player.position,
+                  runTackleResult.frozenPositions[player.id] ?? player.position,
               })),
               getManRandomizedTargetIds(
                 startPlayers,
@@ -1749,24 +1903,21 @@ export default function Home() {
         if (lastRevealRef.current) {
           lastRevealRef.current.ballPlan = { ...ballPlan };
         }
-        setTimeout(
-          () => {
-            const randomizedTargets = getManRandomizedTargetIds(
-              startPlayers,
-              initialPositionsRef.current,
-              1,
-            );
-            evaluateRound(
-              startPlayers.map((p) => ({
-                ...p,
-                position: resolvedPositions[p.id] ?? p.position,
-              })),
-              randomizedTargets,
-              liveBallState?.carrierId ?? ballPlan.completionTargetId,
-            );
-          },
-          120,
-        );
+        setTimeout(() => {
+          const randomizedTargets = getManRandomizedTargetIds(
+            startPlayers,
+            initialPositionsRef.current,
+            1,
+          );
+          evaluateRound(
+            startPlayers.map((p) => ({
+              ...p,
+              position: resolvedPositions[p.id] ?? p.position,
+            })),
+            randomizedTargets,
+            liveBallState?.carrierId ?? ballPlan.completionTargetId,
+          );
+        }, 120);
       }
     };
 
@@ -1893,7 +2044,7 @@ export default function Home() {
       });
       setSelectedPlayerId(undefined);
       setActiveAssignment(undefined);
-      setPhase("pass-device");
+      setPhase("defense-design");
       return;
     }
 
@@ -1910,7 +2061,8 @@ export default function Home() {
         losYard: situation.ballSpotYard,
       });
       setSelectedPlayerId(undefined);
-      animateReveal();
+      setActiveAssignment(undefined);
+      setPhase("ready-reveal");
     }
   };
 
@@ -1927,30 +2079,34 @@ export default function Home() {
     setPlayers((prev) =>
       enforceSingleRunCarrier(
         prev.map((player) => {
-        if (player.team !== team) return player;
-        const savedPlayer = saved.players.find(
-          (candidate) => candidate.id === player.id,
-        );
-        if (!savedPlayer) return player;
+          if (player.team !== team) return player;
+          const savedPlayer = saved.players.find(
+            (candidate) => candidate.id === player.id,
+          );
+          if (!savedPlayer) return player;
 
-        const translatedPosition = translatePointToLine(
-          savedPlayer.position,
-          saved.losYard,
-          situation.ballSpotYard,
-        );
-        return {
-          ...player,
-          position: clampToLineOfScrimmageSide(
-            player,
-            translatedPosition,
+          const translatedPosition = translatePointToLine(
+            savedPlayer.position,
+            saved.losYard,
             situation.ballSpotYard,
-          ),
-          assignment: savedPlayer.assignment,
-          manTargetId: savedPlayer.manTargetId,
-          path: savedPlayer.path.map((point) =>
-            translatePointToLine(point, saved.losYard, situation.ballSpotYard),
-          ),
-        };
+          );
+          return {
+            ...player,
+            position: clampToLineOfScrimmageSide(
+              player,
+              translatedPosition,
+              situation.ballSpotYard,
+            ),
+            assignment: savedPlayer.assignment,
+            manTargetId: savedPlayer.manTargetId,
+            path: savedPlayer.path.map((point) =>
+              translatePointToLine(
+                point,
+                saved.losYard,
+                situation.ballSpotYard,
+              ),
+            ),
+          };
         }),
       ),
     );
@@ -1958,7 +2114,9 @@ export default function Home() {
 
   const applySelectedTemplate = (team: "offense" | "defense") => {
     const templateId =
-      team === "offense" ? selectedOffenseTemplateId : selectedDefenseTemplateId;
+      team === "offense"
+        ? selectedOffenseTemplateId
+        : selectedDefenseTemplateId;
     if (!templateId) return;
     setPlayers((prev) =>
       enforceSingleRunCarrier(
@@ -1981,12 +2139,20 @@ export default function Home() {
 
   const offensivePlayers = players.filter((p) => p.team === "offense");
   const defensivePlayers = players.filter((p) => p.team === "defense");
+  const controlPanelPlayers =
+    phase === "offense-design"
+      ? offensivePlayers
+      : phase === "defense-design"
+        ? defensivePlayers
+        : [...offensivePlayers, ...defensivePlayers];
   const displayBallPosition =
     ballPosition ?? players.find((player) => player.id === QB_ID)?.position;
   const displayBallCarrierId =
     ballCarrierId ?? (displayBallPosition ? QB_ID : undefined);
   const visibleZoneCoverages =
-    phase === "defense-design" || phase === "animating" || phase === "discussion"
+    phase === "defense-design" ||
+    phase === "animating" ||
+    phase === "discussion"
       ? getZoneCoverageAreas(defensivePlayers, situation.ballSpotYard)
       : [];
 
@@ -1998,36 +2164,32 @@ export default function Home() {
         }`}
       >
         <div className="flex h-full flex-col pb-2">
-          <div className="min-h-0 flex-1 space-y-3 overflow-hidden p-3">
+          <div className="hide-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-3">
             <div className="rounded-lg border border-zinc-700 bg-zinc-900/70 px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
               Turn:{" "}
               <span className="text-white">
-                {phase === "offense-design" || phase === "pass-device"
+                {phase === "offense-design"
                   ? "Offense"
                   : phase === "defense-design"
                     ? "Defense"
                     : "Reveal / Review"}
               </span>
             </div>
+            <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/90 backdrop-blur">
+              <Scoreboard
+                situation={situation}
+                offenseWins={offenseWins}
+                defenseWins={defenseWins}
+                onReset={resetMatch}
+              />
+              <div className="border-t border-zinc-800 px-3 py-2 text-[11px] font-semibold text-zinc-300">
+                {situation.description} • Shared-device duel. First side to 3
+                round wins takes the match.
+              </div>
+            </div>
             {phase === "animating" ? (
               <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-center text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
                 Simultaneous Reveal In Progress
-              </div>
-            ) : null}
-            {phase === "pass-device" ? (
-              <div className="rounded-xl border border-zinc-700/90 bg-zinc-900/85 p-3">
-                <p className="text-xs font-semibold text-zinc-200">
-                  Offense is locked. Hand to defense to set assignments.
-                </p>
-                <button
-                  onClick={() => {
-                    setActiveAssignment(undefined);
-                    setPhase("defense-design");
-                  }}
-                  className="mt-3 w-full rounded-md border border-white bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-black transition hover:bg-zinc-200"
-                >
-                  Defense Ready
-                </button>
               </div>
             ) : null}
             {phase === "discussion" ? (
@@ -2075,7 +2237,8 @@ export default function Home() {
                     <p className="mt-2 text-[11px] text-zinc-400">
                       {offenseTemplates.find(
                         (template) => template.id === selectedOffenseTemplateId,
-                      )?.description ?? "Select a template to seed assignments."}
+                      )?.description ??
+                        "Select a template to seed assignments."}
                     </p>
                     <button
                       onClick={() => applySelectedTemplate("offense")}
@@ -2108,7 +2271,8 @@ export default function Home() {
                     <p className="mt-2 text-[11px] text-zinc-400">
                       {defenseTemplates.find(
                         (template) => template.id === selectedDefenseTemplateId,
-                      )?.description ?? "Select a template to seed assignments."}
+                      )?.description ??
+                        "Select a template to seed assignments."}
                     </p>
                     <button
                       onClick={() => applySelectedTemplate("defense")}
@@ -2160,6 +2324,18 @@ export default function Home() {
                     Run Same Defense Play
                   </button>
                 ) : null}
+                {phase === "defense-design" ? (
+                  <button
+                    onClick={() => {
+                      setSelectedPlayerId(undefined);
+                      setActiveAssignment(undefined);
+                      setPhase("offense-design");
+                    }}
+                    className="w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
+                  >
+                    Back To Offense
+                  </button>
+                ) : null}
               </>
             )}
 
@@ -2168,7 +2344,7 @@ export default function Home() {
                 Players
               </p>
               <div className="grid grid-cols-2 gap-2 text-xs text-zinc-200">
-                {[...offensivePlayers, ...defensivePlayers].map((player) => (
+                {controlPanelPlayers.map((player) => (
                   <PlayerPiece
                     key={player.id}
                     player={player}
@@ -2214,19 +2390,6 @@ export default function Home() {
           />
         </div>
 
-        <div className="mb-2 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/90 backdrop-blur">
-          <Scoreboard
-            situation={situation}
-            offenseWins={offenseWins}
-            defenseWins={defenseWins}
-            onReset={resetMatch}
-          />
-          <div className="border-t border-zinc-800 px-4 py-2 text-xs font-semibold text-zinc-300">
-            {situation.description} • Shared-device duel. First side to 3 round
-            wins takes the match.
-          </div>
-        </div>
-
         <div className="min-h-0 flex-1">
           <Field
             players={players}
@@ -2246,11 +2409,7 @@ export default function Home() {
                 ? pathStartOverrides
                 : undefined
             }
-            hiddenPathTeams={
-              phase === "pass-device" || phase === "defense-design"
-                ? ["offense"]
-                : []
-            }
+            hiddenPathTeams={phase === "defense-design" ? ["offense"] : []}
             onSelectPlayer={handleSelectPlayer}
             onMovePlayer={movePlayer}
             onAppendPathPoint={appendPathPoint}
@@ -2268,6 +2427,14 @@ export default function Home() {
           subtitle="Reset to start a new match."
           actionLabel="Play Again"
           onAction={resetMatch}
+        />
+      )}
+      {phase === "ready-reveal" && (
+        <RevealOverlay
+          title="Down... Set..."
+          subtitle="Everyone is set."
+          actionLabel="Hut Hike"
+          onAction={animateReveal}
         />
       )}
     </main>

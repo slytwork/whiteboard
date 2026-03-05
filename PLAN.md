@@ -42,3 +42,9 @@
 - [x] Lets add cover 1, cover 0, cover 2, and cover 4 in the defensive templates and make sure their presnap alignment looks like the presnap alignment for that given coverage.
 - [x] Lets add all hitches, stick, snag, 4 verts, y-cross, and mesh in the offensive templates.
 - [x] The ball is still being thrown way to quick and if the route that is being run has an initial stem we can't consider the receiver open until the second stem, let's update this
+- [x] We need to add a mechanic that helps the ball carrier follow his players who are blocking that puts his blockers in between him and the defenders in pursuit. Also the blockers should always pursuit blocking the defender that is closest to him while leading the way to gain more yards in front of the ball carrier
+- [x] Let's move the situation and the score panel box to our controls side panel so that we can maximize the vertical space for the field on the right side
+- [x] The side panel needs to be scrollable now that there is a lot of controls that could span beyond the viewport
+- [x] Let's filter the players list in the controls panel for when that side of the ball is up to edit the play. So when its the offenses turn, the list of players should only be the offensive players and the same for the defense.
+- [x] Let's remove the step after an offense has set their play and go straight to the defense setting up their play instead of the defense ready state. When the defense finishes, lets prompt the user with a modal that gets both users ready to start the play/reveal. Also need to add the ability to go back to the offensive play after the offense locks in the their play and proceeds to the defense setting up their play in the case they missed something.
+- [x] Lets change the modal to say "Down... Set..." and the button say "Hut Hike"
