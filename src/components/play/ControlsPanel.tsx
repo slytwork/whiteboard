@@ -3,7 +3,6 @@
 import { AssignmentPanel } from '@/components/AssignmentPanel';
 import { PlayerPiece } from '@/components/PlayerPiece';
 import { Scoreboard } from '@/components/Scoreboard';
-import { PlayTemplate } from '@/lib/playTemplates';
 import { Situation } from '@/lib/situationEngine';
 import { AssignmentType, Player } from '@/lib/movementEngine';
 
@@ -26,14 +25,15 @@ type ControlsPanelProps = {
   resultMessage: string;
   onReplayReveal: () => void;
   onAdvanceToNextRound: () => void;
-  offenseTemplates: PlayTemplate[];
-  defenseTemplates: PlayTemplate[];
+  offenseTemplates: Array<{ id: string; label: string; description: string }>;
+  defenseTemplates: Array<{ id: string; label: string; description: string }>;
   selectedOffenseTemplateId: string;
   selectedDefenseTemplateId: string;
   setSelectedOffenseTemplateId: (id: string) => void;
   setSelectedDefenseTemplateId: (id: string) => void;
   applyTemplateById: (team: 'offense' | 'defense', templateId: string) => void;
   applySelectedTemplate: (team: 'offense' | 'defense') => void;
+  onSaveOffenseTemplate: () => void;
   currentSelected?: Player;
   offensivePlayers: Player[];
   activeAssignment?: AssignmentType;
@@ -71,6 +71,7 @@ export function ControlsPanel({
   setSelectedDefenseTemplateId,
   applyTemplateById,
   applySelectedTemplate,
+  onSaveOffenseTemplate,
   currentSelected,
   offensivePlayers,
   activeAssignment,
@@ -157,6 +158,7 @@ export function ControlsPanel({
                       applyTemplateById('offense', templateId);
                     }}
                   >
+                    <option value="">Select Saved Template</option>
                     {offenseTemplates.map((template) => (
                       <option key={template.id} value={template.id}>
                         {template.label}
@@ -165,10 +167,17 @@ export function ControlsPanel({
                   </select>
                   <p className="mt-2 text-[11px] text-zinc-400">
                     {offenseTemplates.find((template) => template.id === selectedOffenseTemplateId)
-                      ?.description ?? 'Select a template to seed assignments.'}
+                      ?.description ?? 'No built-in offense templates. Save your own to reuse.'}
                   </p>
                   <button
+                    onClick={onSaveOffenseTemplate}
+                    className="mt-2 w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
+                  >
+                    Save Current Offense Template
+                  </button>
+                  <button
                     onClick={() => applySelectedTemplate('offense')}
+                    disabled={!selectedOffenseTemplateId}
                     className="mt-2 w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
                   >
                     Apply Offense Template

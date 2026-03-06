@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Field } from "@/components/Field";
 import { ControlsPanel } from "@/components/play/ControlsPanel";
 import { RevealOverlay } from "@/components/RevealOverlay";
@@ -115,12 +115,25 @@ type RevealSnapshot = {
   runTackleResult?: RunTackleResult;
 };
 
+type SavedTeamPlay = {
+  players: Player[];
+  losYard: number;
+};
+
+type SavedOffenseTemplate = {
+  id: string;
+  label: string;
+  description: string;
+  play: SavedTeamPlay;
+};
+
 const QB_ID = "qb";
 const HANDOFF_START_PROGRESS = 0.18;
 const HANDOFF_END_PROGRESS = 0.34;
 const PASS_TRAVEL_DURATION_PROGRESS = 0.1;
 const RUN_REVEAL_DURATION_MS = 3000;
 const PASS_SCAN_DURATION_MS = 4000;
+const OFFENSE_TEMPLATE_STORAGE_KEY = "whiteboard.offenseTemplates.v1";
 
 const lerpPoint = (from: Point, to: Point, t: number): Point => ({
   x: from.x + (to.x - from.x) * t,
@@ -362,6 +375,20 @@ const getBestOpenPassTargetAtFrame = (
   const offenseEligible = players.filter((player) =>
     isPassEligibleReceiver(player, ELIGIBLE_ROLES),
   );
+  const activeRouteReceivers = offenseEligible.filter(
+    (receiver) =>
+      receiver.assignment === "pass-route" && receiver.path.length > 0,
+  );
+  if (activeRouteReceivers.length === 1) {
+    const screenTarget = activeRouteReceivers[0];
+    const screenPoint = framePositions[screenTarget.id] ?? screenTarget.position;
+    if (screenPoint.y > lineOfScrimmageYard) {
+      return {
+        id: screenTarget.id,
+        gainedYards: Math.max(0, lineOfScrimmageYard - screenPoint.y),
+      };
+    }
+  }
   const defenders = players.map((player) => ({
     ...player,
     position: framePositions[player.id] ?? player.position,
@@ -803,8 +830,10 @@ const findRunTackle = (
 };
 
 export default function Home() {
-  const offenseTemplates = getPlayTemplatesForTeam("offense");
   const defenseTemplates = getPlayTemplatesForTeam("defense");
+  const [offenseTemplates, setOffenseTemplates] = useState<
+    SavedOffenseTemplate[]
+  >([]);
   const [situation, setSituation] = useState<Situation>(DEFAULT_SITUATION);
   const [players, setPlayers] = useState<Player[]>(() =>
     createRoster(DEFAULT_SITUATION),
@@ -823,14 +852,13 @@ export default function Home() {
   const [ballPosition, setBallPosition] = useState<Point>();
   const [ballCarrierId, setBallCarrierId] = useState<string | undefined>(QB_ID);
   const [lastOffensePlay, setLastOffensePlay] = useState<
-    { players: Player[]; losYard: number } | undefined
+    SavedTeamPlay | undefined
   >();
   const [lastDefensePlay, setLastDefensePlay] = useState<
-    { players: Player[]; losYard: number } | undefined
+    SavedTeamPlay | undefined
   >();
-  const [selectedOffenseTemplateId, setSelectedOffenseTemplateId] = useState(
-    () => offenseTemplates[0]?.id ?? "",
-  );
+  const [selectedOffenseTemplateId, setSelectedOffenseTemplateId] =
+    useState("");
   const [selectedDefenseTemplateId, setSelectedDefenseTemplateId] = useState(
     () => defenseTemplates[0]?.id ?? "",
   );
@@ -846,6 +874,29 @@ export default function Home() {
     () => players.find((p) => p.id === selectedPlayerId),
     [players, selectedPlayerId],
   );
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(OFFENSE_TEMPLATE_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as SavedOffenseTemplate[];
+      if (!Array.isArray(parsed)) return;
+      const valid = parsed.filter(
+        (template) =>
+          template &&
+          typeof template.id === "string" &&
+          typeof template.label === "string" &&
+          template.play &&
+          Array.isArray(template.play.players) &&
+          typeof template.play.losYard === "number",
+      );
+      setOffenseTemplates(valid);
+      if (valid.length) {
+        setSelectedOffenseTemplateId((prev) => prev || valid[0].id);
+      }
+    } catch {
+      // Ignore corrupted local template data and continue with empty list.
+    }
+  }, []);
   const isManTargetSelectionMode =
     phase === "defense-design" &&
     currentSelected?.team === "defense" &&
@@ -1731,44 +1782,45 @@ export default function Home() {
     setQueuedRoundSituation(undefined);
   };
 
+  const applySavedSnapshotToTeam = (
+    prev: Player[],
+    saved: SavedTeamPlay,
+    team: "offense" | "defense",
+  ) =>
+    enforceSingleRunCarrier(
+      prev.map((player) => {
+        if (player.team !== team) return player;
+        const savedPlayer = saved.players.find(
+          (candidate) => candidate.id === player.id,
+        );
+        if (!savedPlayer) return player;
+
+        const translatedPosition = translatePointToLine(
+          savedPlayer.position,
+          saved.losYard,
+          situation.ballSpotYard,
+        );
+        return {
+          ...player,
+          position: clampToLineOfScrimmageSide(
+            player,
+            translatedPosition,
+            situation.ballSpotYard,
+          ),
+          assignment: savedPlayer.assignment,
+          manTargetId: savedPlayer.manTargetId,
+          path: savedPlayer.path.map((point) =>
+            translatePointToLine(point, saved.losYard, situation.ballSpotYard),
+          ),
+        };
+      }),
+    );
+
   const applySavedTeamPlay = (team: "offense" | "defense") => {
     const saved = team === "offense" ? lastOffensePlay : lastDefensePlay;
     if (!saved) return;
 
-    setPlayers((prev) =>
-      enforceSingleRunCarrier(
-        prev.map((player) => {
-          if (player.team !== team) return player;
-          const savedPlayer = saved.players.find(
-            (candidate) => candidate.id === player.id,
-          );
-          if (!savedPlayer) return player;
-
-          const translatedPosition = translatePointToLine(
-            savedPlayer.position,
-            saved.losYard,
-            situation.ballSpotYard,
-          );
-          return {
-            ...player,
-            position: clampToLineOfScrimmageSide(
-              player,
-              translatedPosition,
-              situation.ballSpotYard,
-            ),
-            assignment: savedPlayer.assignment,
-            manTargetId: savedPlayer.manTargetId,
-            path: savedPlayer.path.map((point) =>
-              translatePointToLine(
-                point,
-                saved.losYard,
-                situation.ballSpotYard,
-              ),
-            ),
-          };
-        }),
-      ),
-    );
+    setPlayers((prev) => applySavedSnapshotToTeam(prev, saved, team));
   };
 
   const applySelectedTemplate = (team: "offense" | "defense") => {
@@ -1777,11 +1829,7 @@ export default function Home() {
         ? selectedOffenseTemplateId
         : selectedDefenseTemplateId;
     if (!templateId) return;
-    setPlayers((prev) =>
-      enforceSingleRunCarrier(
-        applyPlayTemplate(prev, team, templateId, situation.ballSpotYard),
-      ),
-    );
+    applyTemplateById(team, templateId);
   };
 
   const applyTemplateById = (
@@ -1789,11 +1837,48 @@ export default function Home() {
     templateId: string,
   ) => {
     if (!templateId) return;
+    if (team === "offense") {
+      const savedTemplate = offenseTemplates.find(
+        (template) => template.id === templateId,
+      );
+      if (!savedTemplate) return;
+      setPlayers((prev) =>
+        applySavedSnapshotToTeam(prev, savedTemplate.play, "offense"),
+      );
+      return;
+    }
     setPlayers((prev) =>
       enforceSingleRunCarrier(
         applyPlayTemplate(prev, team, templateId, situation.ballSpotYard),
       ),
     );
+  };
+
+  const saveCurrentOffenseTemplate = () => {
+    if (phase !== "offense-design") return;
+    const input = window.prompt("Template name", "My Offense Play");
+    if (!input) return;
+    const label = input.trim();
+    if (!label) return;
+
+    const snapshot: SavedTeamPlay = {
+      players: clonePlayers(
+        players.filter((player) => player.team === "offense"),
+      ),
+      losYard: situation.ballSpotYard,
+    };
+    const template: SavedOffenseTemplate = {
+      id: `offense-${Date.now()}`,
+      label,
+      description: "User-saved offense template.",
+      play: snapshot,
+    };
+    setOffenseTemplates((prev) => {
+      const next = [template, ...prev];
+      localStorage.setItem(OFFENSE_TEMPLATE_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    setSelectedOffenseTemplateId(template.id);
   };
 
   const offensivePlayers = players.filter((p) => p.team === "offense");
@@ -1835,6 +1920,7 @@ export default function Home() {
         setSelectedDefenseTemplateId={setSelectedDefenseTemplateId}
         applyTemplateById={applyTemplateById}
         applySelectedTemplate={applySelectedTemplate}
+        onSaveOffenseTemplate={saveCurrentOffenseTemplate}
         currentSelected={currentSelected}
         offensivePlayers={offensivePlayers}
         activeAssignment={activeAssignment}

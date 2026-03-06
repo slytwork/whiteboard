@@ -48,3 +48,5 @@
 - [x] Let's filter the players list in the controls panel for when that side of the ball is up to edit the play. So when its the offenses turn, the list of players should only be the offensive players and the same for the defense.
 - [x] Let's remove the step after an offense has set their play and go straight to the defense setting up their play instead of the defense ready state. When the defense finishes, lets prompt the user with a modal that gets both users ready to start the play/reveal. Also need to add the ability to go back to the offensive play after the offense locks in the their play and proceeds to the defense setting up their play in the case they missed something.
 - [x] Lets change the modal to say "Down... Set..." and the button say "Hut Hike"
+- [x] Save offensive play templates in localstorage
+- [x] When there is only one receiver in route and he is behind the line of scrimmage the quarterback should still throw to him since this is how screens work.
