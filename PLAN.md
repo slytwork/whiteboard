@@ -50,3 +50,4 @@
 - [x] Lets change the modal to say "Down... Set..." and the button say "Hut Hike"
 - [x] Save offensive play templates in localstorage
 - [x] When there is only one receiver in route and he is behind the line of scrimmage the quarterback should still throw to him since this is how screens work.
+- [x] Fix bug for ball being placed off the screen

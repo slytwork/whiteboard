@@ -1,9 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-
+import { useEffect, useRef, useState } from 'react';
 import {
-  FIELD_LENGTH_PX,
   FIELD_WIDTH_PX,
   Point,
   YARD_TO_PX,
@@ -33,9 +31,16 @@ type FieldProps = {
   onAppendPathPoint: (id: string, point: Point) => void;
 };
 
-const toSvg = (point: Point) => ({ x: yardsToPx(point.x), y: yardsToPx(point.y) });
+const VISIBLE_FIELD_HEIGHT_YARDS = 60;
+const LOS_VIEWPORT_RATIO = 0.72;
+const FIELD_VIEWBOX_HEIGHT_PX = yardsToPx(VISIBLE_FIELD_HEIGHT_YARDS);
 
-const getSnappedPointFromPointer = (svg: SVGSVGElement, clientX: number, clientY: number): Point => {
+const getSnappedPointFromPointer = (
+  svg: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+  cameraOffsetYards: number
+): Point => {
   const viewBox = svg.viewBox.baseVal;
   const ctm = svg.getScreenCTM();
   if (ctm) {
@@ -43,7 +48,10 @@ const getSnappedPointFromPointer = (svg: SVGSVGElement, clientX: number, clientY
     pt.x = clientX;
     pt.y = clientY;
     const transformed = pt.matrixTransform(ctm.inverse());
-    return snapPointToYard({ x: transformed.x / YARD_TO_PX, y: transformed.y / YARD_TO_PX });
+    return snapPointToYard({
+      x: transformed.x / YARD_TO_PX,
+      y: transformed.y / YARD_TO_PX + cameraOffsetYards
+    });
   }
 
   const rect = svg.getBoundingClientRect();
@@ -51,7 +59,7 @@ const getSnappedPointFromPointer = (svg: SVGSVGElement, clientX: number, clientY
   const relativeY = (clientY - rect.top) / rect.height;
   return snapPointToYard({
     x: (viewBox.x + relativeX * viewBox.width) / YARD_TO_PX,
-    y: (viewBox.y + relativeY * viewBox.height) / YARD_TO_PX
+    y: (viewBox.y + relativeY * viewBox.height) / YARD_TO_PX + cameraOffsetYards
   });
 };
 
@@ -73,6 +81,37 @@ export function Field({
   onAppendPathPoint
 }: FieldProps) {
   const lineToGainYard = Math.max(0, ballSpotYard - requiredYards);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      setContainerSize({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height
+      });
+    });
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, []);
+
+  const scaleX = containerSize.width > 0 ? containerSize.width / FIELD_WIDTH_PX : 1;
+  const scaleY = containerSize.height > 0 ? containerSize.height / FIELD_VIEWBOX_HEIGHT_PX : 1;
+  const sliceScale = Math.max(scaleX, scaleY);
+  const visibleViewBoxHeightPx =
+    sliceScale > 0 ? containerSize.height / sliceScale : FIELD_VIEWBOX_HEIGHT_PX;
+  const cropTopPx = (FIELD_VIEWBOX_HEIGHT_PX - visibleViewBoxHeightPx) / 2;
+  const losViewYPx = cropTopPx + visibleViewBoxHeightPx * LOS_VIEWPORT_RATIO;
+  const cameraOffsetYards = ballSpotYard - losViewYPx / YARD_TO_PX;
+  const toSvg = (point: Point) => ({
+    x: yardsToPx(point.x),
+    y: yardsToPx(point.y - cameraOffsetYards)
+  });
+  const yardToScreenY = (yard: number) => yardsToPx(yard - cameraOffsetYards);
   const selected = players.find((p) => p.id === selectedPlayerId);
   const manLinks = players
     .filter(
@@ -87,35 +126,23 @@ export function Field({
     }))
     .filter((link): link is { defender: Player; target: Player } => Boolean(link.target));
   const selectedManTargetId = selected?.assignment === 'man' ? selected.manTargetId : undefined;
-  const dynamicViewBox = useMemo(() => {
-    const minVisibleHeight = yardsToPx(60);
-    const edgePadding = yardsToPx(10);
-    const defenseSideOffset = yardsToPx(10);
-    const playerYs = players.map((player) => yardsToPx(player.position.y));
-    const minPlayerY = playerYs.length ? Math.min(...playerYs) : yardsToPx(ballSpotYard);
-    const maxPlayerY = playerYs.length ? Math.max(...playerYs) : yardsToPx(ballSpotYard);
-    const playerSpan = Math.max(0, maxPlayerY - minPlayerY) + edgePadding * 2;
-    const viewHeight = Math.min(FIELD_LENGTH_PX, Math.max(minVisibleHeight, playerSpan));
-    const desiredCenterY = yardsToPx(ballSpotYard) - defenseSideOffset;
-    const maxTop = FIELD_LENGTH_PX - viewHeight;
-    const baseTop = Math.max(0, Math.min(maxTop, desiredCenterY - viewHeight / 2));
-    const minimumOffenseSideVisibleY = yardsToPx(ballSpotYard + 5);
-    const minTopForOffenseSide = minimumOffenseSideVisibleY - viewHeight;
-    const top = Math.max(0, Math.min(maxTop, Math.max(baseTop, minTopForOffenseSide)));
-    return { x: 0, y: top, width: FIELD_WIDTH_PX, height: viewHeight };
-  }, [ballSpotYard, players]);
-
   const handleFieldClick = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!interactive || !selected || (editableTeam && selected.team !== editableTeam)) return;
     if (selected.assignment === 'man' || selected.assignment === 'blitz') return;
-    const point = getSnappedPointFromPointer(event.currentTarget, event.clientX, event.clientY);
+    const point = getSnappedPointFromPointer(
+      event.currentTarget,
+      event.clientX,
+      event.clientY,
+      cameraOffsetYards
+    );
     onAppendPathPoint(selected.id, point);
   };
 
   return (
     <div className="relative flex h-full w-full flex-col px-0 py-2">
       <svg
-        viewBox={`${dynamicViewBox.x} ${dynamicViewBox.y} ${dynamicViewBox.width} ${dynamicViewBox.height}`}
+        ref={svgRef}
+        viewBox={`0 0 ${FIELD_WIDTH_PX} ${FIELD_VIEWBOX_HEIGHT_PX}`}
         preserveAspectRatio="xMidYMid slice"
         className="block min-h-0 flex-1 w-full rounded-xl border border-white/25 bg-black shadow-[0_20px_60px_rgba(0,0,0,0.7)]"
         onPointerDown={handleFieldClick}
@@ -138,19 +165,19 @@ export function Field({
           </marker>
         </defs>
 
-        <rect x={0} y={0} width={FIELD_WIDTH_PX} height={FIELD_LENGTH_PX} fill="#111111" />
-        <rect x={0} y={0} width={FIELD_WIDTH_PX} height={yardsToPx(10)} fill="#202020" />
-        <rect x={0} y={yardsToPx(110)} width={FIELD_WIDTH_PX} height={yardsToPx(10)} fill="#202020" />
+        <rect x={0} y={0} width={FIELD_WIDTH_PX} height={FIELD_VIEWBOX_HEIGHT_PX} fill="#111111" />
+        <rect x={0} y={yardToScreenY(0)} width={FIELD_WIDTH_PX} height={yardsToPx(10)} fill="#202020" />
+        <rect x={0} y={yardToScreenY(110)} width={FIELD_WIDTH_PX} height={yardsToPx(10)} fill="#202020" />
 
-        <line x1={0} x2={0} y1={0} y2={FIELD_LENGTH_PX} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
-        <line x1={FIELD_WIDTH_PX} x2={FIELD_WIDTH_PX} y1={0} y2={FIELD_LENGTH_PX} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
-        <line x1={0} x2={FIELD_WIDTH_PX} y1={yardsToPx(10)} y2={yardsToPx(10)} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
-        <line x1={0} x2={FIELD_WIDTH_PX} y1={yardsToPx(110)} y2={yardsToPx(110)} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
+        <line x1={0} x2={0} y1={0} y2={FIELD_VIEWBOX_HEIGHT_PX} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
+        <line x1={FIELD_WIDTH_PX} x2={FIELD_WIDTH_PX} y1={0} y2={FIELD_VIEWBOX_HEIGHT_PX} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
+        <line x1={0} x2={FIELD_WIDTH_PX} y1={yardToScreenY(10)} y2={yardToScreenY(10)} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
+        <line x1={0} x2={FIELD_WIDTH_PX} y1={yardToScreenY(110)} y2={yardToScreenY(110)} stroke="#f5f5f5" strokeWidth={2} opacity={0.9} />
 
         {Array.from({ length: 25 }).map((_, i) => {
           const yard = i * 5;
           if (yard === 10 || yard === 110) return null;
-          const y = yardsToPx(yard);
+          const y = yardToScreenY(yard);
           return (
             <line
               key={yard}
@@ -169,7 +196,7 @@ export function Field({
           const yard = i * 5 + 10;
           if (yard >= 110 || yard % 10 !== 0) return null;
           const display = yard <= 60 ? yard - 10 : 110 - yard;
-          const y = yardsToPx(yard);
+          const y = yardToScreenY(yard);
           return (
             <g key={`num-${yard}`}>
               <text x={yardsToPx(6)} y={y - 2} fill="#fafafa" fontSize={12} fontWeight={700} opacity={0.38}>
@@ -183,7 +210,7 @@ export function Field({
         })}
 
         {Array.from({ length: 100 }).map((_, i) => {
-          const y = yardsToPx(i + 10);
+          const y = yardToScreenY(i + 10);
           return (
             <g key={`hash-${i}`} opacity={0.28}>
               <line x1={yardsToPx(20)} x2={yardsToPx(21)} y1={y} y2={y} stroke="#f3f4f6" strokeWidth={1} />
@@ -195,8 +222,8 @@ export function Field({
         <line
           x1={0}
           x2={FIELD_WIDTH_PX}
-          y1={yardsToPx(ballSpotYard)}
-          y2={yardsToPx(ballSpotYard)}
+          y1={yardToScreenY(ballSpotYard)}
+          y2={yardToScreenY(ballSpotYard)}
           stroke="#2563eb"
           strokeWidth={2.2}
           opacity={0.9}
@@ -204,8 +231,8 @@ export function Field({
         <line
           x1={0}
           x2={FIELD_WIDTH_PX}
-          y1={yardsToPx(lineToGainYard)}
-          y2={yardsToPx(lineToGainYard)}
+          y1={yardToScreenY(lineToGainYard)}
+          y2={yardToScreenY(lineToGainYard)}
           stroke="#facc15"
           strokeWidth={2}
           opacity={0.95}
@@ -215,9 +242,9 @@ export function Field({
           <line
             key={`man-link-${defender.id}-${target.id}`}
             x1={yardsToPx(defender.position.x)}
-            y1={yardsToPx(defender.position.y)}
+            y1={yardToScreenY(defender.position.y)}
             x2={yardsToPx(target.position.x)}
-            y2={yardsToPx(target.position.y)}
+            y2={yardToScreenY(target.position.y)}
             stroke={defender.id === selectedPlayerId ? '#67e8f9' : '#22d3ee'}
             strokeWidth={defender.id === selectedPlayerId ? 1.4 : 1.1}
             strokeDasharray="4 4"
@@ -226,7 +253,7 @@ export function Field({
         ))}
 
         {ballPosition ? (
-          <g transform={`translate(${yardsToPx(ballPosition.x)}, ${yardsToPx(ballPosition.y)})`}>
+          <g transform={`translate(${yardsToPx(ballPosition.x)}, ${yardToScreenY(ballPosition.y)})`}>
             <ellipse rx={2.1} ry={1.45} fill="#8b5a2b" stroke="#f5f5f5" strokeWidth={0.45} />
             <line x1={-0.95} x2={0.95} y1={0} y2={0} stroke="#f5f5f5" strokeWidth={0.35} strokeLinecap="round" />
           </g>
@@ -241,7 +268,7 @@ export function Field({
               <>
                 <ellipse
                   cx={yardsToPx(zone.center.x)}
-                  cy={yardsToPx(zone.center.y)}
+                  cy={yardToScreenY(zone.center.y)}
                   rx={yardsToPx(zone.radiusX)}
                   ry={yardsToPx(zone.radiusY)}
                   fill="#93c5fd"
@@ -249,7 +276,7 @@ export function Field({
                 />
                 <ellipse
                   cx={yardsToPx(zone.center.x)}
-                  cy={yardsToPx(zone.center.y)}
+                  cy={yardToScreenY(zone.center.y)}
                   rx={yardsToPx(zone.radiusX)}
                   ry={yardsToPx(zone.radiusY)}
                   fill="none"
@@ -264,14 +291,14 @@ export function Field({
               <>
                 <circle
                   cx={yardsToPx(zone.center.x)}
-                  cy={yardsToPx(zone.center.y)}
+                  cy={yardToScreenY(zone.center.y)}
                   r={yardsToPx(zone.radius)}
                   fill="#93c5fd"
                   opacity={0.12}
                 />
                 <circle
                   cx={yardsToPx(zone.center.x)}
-                  cy={yardsToPx(zone.center.y)}
+                  cy={yardToScreenY(zone.center.y)}
                   r={yardsToPx(zone.radius)}
                   fill="none"
                   stroke="#93c5fd"
@@ -348,7 +375,12 @@ export function Field({
                   if (!svg) return;
 
                   const move = (moveEvent: PointerEvent) => {
-                    const next = getSnappedPointFromPointer(svg, moveEvent.clientX, moveEvent.clientY);
+                    const next = getSnappedPointFromPointer(
+                      svg,
+                      moveEvent.clientX,
+                      moveEvent.clientY,
+                      cameraOffsetYards
+                    );
                     onMovePlayer(player.id, next);
                   };
                   const up = () => {
