@@ -1,11 +1,9 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { AssignmentPanel } from "@/components/AssignmentPanel";
 import { Field } from "@/components/Field";
-import { PlayerPiece } from "@/components/PlayerPiece";
+import { ControlsPanel } from "@/components/play/ControlsPanel";
 import { RevealOverlay } from "@/components/RevealOverlay";
-import { Scoreboard } from "@/components/Scoreboard";
 import {
   clampFieldPoint,
   FIELD_WIDTH_YARDS,
@@ -38,6 +36,20 @@ import {
   randomSituation,
   Situation,
 } from "@/lib/situationEngine";
+import {
+  buildNextSituationAfterGain,
+  clampToLineOfScrimmageSide,
+  createRoster,
+  enforceSingleRunCarrier,
+  getPreSnapPenalty,
+  projectFormationToSituation,
+  translatePointToLine,
+} from "@/lib/playSetup";
+import {
+  isPassEligibleReceiver,
+  isPathlessAssignment,
+  toDisplayYards,
+} from "@/lib/playUiUtils";
 import { LuPanelLeftOpen, LuPanelRightOpen } from "react-icons/lu";
 
 const ELIGIBLE_ROLES = new Set(["WR", "TE", "RB"]);
@@ -348,7 +360,7 @@ const getBestOpenPassTargetAtFrame = (
   lineOfScrimmageYard: number,
 ): { id: string; gainedYards: number } | undefined => {
   const offenseEligible = players.filter((player) =>
-    isPassEligibleReceiver(player),
+    isPassEligibleReceiver(player, ELIGIBLE_ROLES),
   );
   const defenders = players.map((player) => ({
     ...player,
@@ -790,359 +802,6 @@ const findRunTackle = (
   return undefined;
 };
 
-const enforceSingleRunCarrier = (players: Player[]): Player[] => {
-  const runCarrier = players.find(
-    (player) => player.team === "offense" && player.assignment === "run",
-  );
-  if (!runCarrier) return players;
-
-  return players.map((player) => {
-    if (player.team !== "offense" || player.id === runCarrier.id) return player;
-    return {
-      ...player,
-      assignment: "block",
-      path: player.assignment === "block" ? player.path : [],
-      manTargetId: undefined,
-    };
-  });
-};
-const clampToLineOfScrimmageSide = (
-  player: Player,
-  point: Point,
-  lineOfScrimmageYard: number,
-): Point =>
-  clampFieldPoint({
-    x: point.x,
-    y:
-      player.team === "offense"
-        ? Math.max(point.y, lineOfScrimmageYard)
-        : Math.min(point.y, lineOfScrimmageYard),
-  });
-
-const projectFormationToSituation = (
-  players: Player[],
-  fromLosYard: number,
-  toLosYard: number,
-): Player[] =>
-  players.map((player) => {
-    const translated = clampFieldPoint({
-      x: player.position.x,
-      y: toLosYard + (player.position.y - fromLosYard),
-    });
-    return {
-      ...player,
-      position: clampToLineOfScrimmageSide(player, translated, toLosYard),
-      assignment: "none",
-      path: [],
-      manTargetId: undefined,
-    };
-  });
-
-const translatePointToLine = (
-  point: Point,
-  fromLosYard: number,
-  toLosYard: number,
-): Point =>
-  clampFieldPoint({
-    x: point.x,
-    y: toLosYard + (point.y - fromLosYard),
-  });
-
-const getPreSnapPenalty = (
-  players: Player[],
-  lineOfScrimmageYard: number,
-):
-  | { label: "False start" | "Offsides"; team: "offense" | "defense" }
-  | undefined => {
-  const offensePastLine = players.some(
-    (player) =>
-      player.team === "offense" && player.position.y < lineOfScrimmageYard,
-  );
-  if (offensePastLine) {
-    return { label: "False start", team: "offense" };
-  }
-
-  const defensePastLine = players.some(
-    (player) =>
-      player.team === "defense" && player.position.y > lineOfScrimmageYard,
-  );
-  if (defensePastLine) {
-    return { label: "Offsides", team: "defense" };
-  }
-
-  return undefined;
-};
-
-const toDisplayYards = (yards: number) => Math.max(1, Math.round(yards));
-const isPathlessAssignment = (assignment: AssignmentType) =>
-  assignment === "man" || assignment === "blitz";
-const isPassEligibleReceiver = (player: Player): boolean =>
-  player.team === "offense" &&
-  ELIGIBLE_ROLES.has(player.role) &&
-  player.assignment !== "block";
-
-const buildNextSituationAfterGain = (
-  current: Situation,
-  gainedYards: number,
-): Situation => {
-  const positiveGain = Math.max(0, gainedYards);
-  const nextBallSpot = Math.max(
-    PLAYABLE_START_YARD,
-    current.ballSpotYard - positiveGain,
-  );
-  const yardsToGoal = Math.max(
-    1,
-    Math.ceil(nextBallSpot - PLAYABLE_START_YARD),
-  );
-  const nextRequired = current.requiredYards - positiveGain;
-
-  if (nextRequired <= 0) {
-    const resetDistance = Math.min(10, yardsToGoal);
-    return {
-      ...current,
-      down: 1,
-      requiredYards: resetDistance,
-      ballSpotYard: nextBallSpot,
-    };
-  }
-
-  return {
-    ...current,
-    down: Math.min(current.down + 1, 4),
-    requiredYards: toDisplayYards(nextRequired),
-    ballSpotYard: nextBallSpot,
-  };
-};
-
-const createRoster = (situation: Situation): Player[] => {
-  const los = situation.ballSpotYard;
-
-  const qb: Player = {
-    id: "qb",
-    label: "QB",
-    team: "offense",
-    role: "QB",
-    position: { x: 26, y: los + 4 },
-    assignment: "none",
-    path: [],
-  };
-  const rb: Player = {
-    id: "rb",
-    label: "RB",
-    team: "offense",
-    role: "RB",
-    position: { x: 29, y: los + 6 },
-    assignment: "none",
-    path: [],
-  };
-  const lt: Player = {
-    id: "lt",
-    label: "LT",
-    team: "offense",
-    role: "LT",
-    position: { x: 22, y: los + 1 },
-    assignment: "none",
-    path: [],
-  };
-  const lg: Player = {
-    id: "lg",
-    label: "LG",
-    team: "offense",
-    role: "LG",
-    position: { x: 24, y: los + 1 },
-    assignment: "none",
-    path: [],
-  };
-  const c: Player = {
-    id: "c",
-    label: "C",
-    team: "offense",
-    role: "C",
-    position: { x: 26, y: los + 1 },
-    assignment: "none",
-    path: [],
-  };
-  const rg: Player = {
-    id: "rg",
-    label: "RG",
-    team: "offense",
-    role: "RG",
-    position: { x: 28, y: los + 1 },
-    assignment: "none",
-    path: [],
-  };
-  const rt: Player = {
-    id: "rt",
-    label: "RT",
-    team: "offense",
-    role: "RT",
-    position: { x: 30, y: los + 1 },
-    assignment: "none",
-    path: [],
-  };
-  const wr1: Player = {
-    id: "wr1",
-    label: "X",
-    team: "offense",
-    role: "WR",
-    position: { x: 8, y: los + 2 },
-    assignment: "none",
-    path: [],
-  };
-  const wr2: Player = {
-    id: "wr2",
-    label: "Z",
-    team: "offense",
-    role: "WR",
-    position: { x: 44, y: los + 2 },
-    assignment: "none",
-    path: [],
-  };
-  const wr3: Player = {
-    id: "wr3",
-    label: "H",
-    team: "offense",
-    role: "WR",
-    position: { x: 16, y: los + 2 },
-    assignment: "none",
-    path: [],
-  };
-  const te: Player = {
-    id: "te",
-    label: "Y",
-    team: "offense",
-    role: "TE",
-    position: { x: 36, y: los + 1 },
-    assignment: "none",
-    path: [],
-  };
-
-  const dl1: Player = {
-    id: "dl1",
-    label: "DE",
-    team: "defense",
-    role: "DL",
-    position: { x: 20, y: los - 1 },
-    assignment: "none",
-    path: [],
-  };
-  const dl2: Player = {
-    id: "dl2",
-    label: "DT1",
-    team: "defense",
-    role: "DL",
-    position: { x: 24, y: los - 1 },
-    assignment: "none",
-    path: [],
-  };
-  const dl3: Player = {
-    id: "dl3",
-    label: "DT2",
-    team: "defense",
-    role: "DL",
-    position: { x: 28, y: los - 1 },
-    assignment: "none",
-    path: [],
-  };
-  const dl4: Player = {
-    id: "dl4",
-    label: "DE2",
-    team: "defense",
-    role: "DL",
-    position: { x: 32, y: los - 1 },
-    assignment: "none",
-    path: [],
-  };
-  const lb1: Player = {
-    id: "lb1",
-    label: "LB1",
-    team: "defense",
-    role: "LB",
-    position: { x: 20, y: los - 4 },
-    assignment: "none",
-    path: [],
-  };
-  const lb2: Player = {
-    id: "lb2",
-    label: "LB2",
-    team: "defense",
-    role: "LB",
-    position: { x: 26, y: los - 4 },
-    assignment: "none",
-    path: [],
-  };
-  const lb3: Player = {
-    id: "lb3",
-    label: "LB3",
-    team: "defense",
-    role: "LB",
-    position: { x: 32, y: los - 4 },
-    assignment: "none",
-    path: [],
-  };
-  const db1: Player = {
-    id: "db1",
-    label: "CB1",
-    team: "defense",
-    role: "DB",
-    position: { x: 8, y: los - 7 },
-    assignment: "none",
-    path: [],
-  };
-  const db2: Player = {
-    id: "db2",
-    label: "S1",
-    team: "defense",
-    role: "DB",
-    position: { x: 20, y: los - 7 },
-    assignment: "none",
-    path: [],
-  };
-  const db3: Player = {
-    id: "db3",
-    label: "S2",
-    team: "defense",
-    role: "DB",
-    position: { x: 32, y: los - 7 },
-    assignment: "none",
-    path: [],
-  };
-  const db4: Player = {
-    id: "db4",
-    label: "CB2",
-    team: "defense",
-    role: "DB",
-    position: { x: 44, y: los - 7 },
-    assignment: "none",
-    path: [],
-  };
-
-  return [
-    qb,
-    rb,
-    lt,
-    lg,
-    c,
-    rg,
-    rt,
-    wr1,
-    wr2,
-    wr3,
-    te,
-    dl1,
-    dl2,
-    dl3,
-    dl4,
-    lb1,
-    lb2,
-    lb3,
-    db1,
-    db2,
-    db3,
-    db4,
-  ];
-};
-
 export default function Home() {
   const offenseTemplates = getPlayTemplatesForTeam("offense");
   const defenseTemplates = getPlayTemplatesForTeam("defense");
@@ -1383,7 +1042,7 @@ export default function Home() {
   ) => {
     setQueuedRoundSituation(undefined);
     const offenseEligible = finalPlayers.filter((p) =>
-      isPassEligibleReceiver(p),
+      isPassEligibleReceiver(p, ELIGIBLE_ROLES),
     );
     const defenders = finalPlayers.filter((p) => p.team === "defense");
     const blockers = finalPlayers.filter(
@@ -2158,212 +1817,46 @@ export default function Home() {
 
   return (
     <main className="h-screen overflow-hidden bg-gradient-to-b from-black via-zinc-950 to-black">
-      <aside
-        className={`fixed left-0 top-0 z-40 h-screen w-[320px] max-w-[86vw] transform border-r border-zinc-700 bg-zinc-950/95 shadow-[14px_0_36px_rgba(0,0,0,0.45)] backdrop-blur transition-transform duration-300 ${
-          controlsOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex h-full flex-col pb-2">
-          <div className="hide-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-3">
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900/70 px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
-              Turn:{" "}
-              <span className="text-white">
-                {phase === "offense-design"
-                  ? "Offense"
-                  : phase === "defense-design"
-                    ? "Defense"
-                    : "Reveal / Review"}
-              </span>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/90 backdrop-blur">
-              <Scoreboard
-                situation={situation}
-                offenseWins={offenseWins}
-                defenseWins={defenseWins}
-                onReset={resetMatch}
-              />
-              <div className="border-t border-zinc-800 px-3 py-2 text-[11px] font-semibold text-zinc-300">
-                {situation.description} • Shared-device duel. First side to 3
-                round wins takes the match.
-              </div>
-            </div>
-            {phase === "animating" ? (
-              <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-center text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
-                Simultaneous Reveal In Progress
-              </div>
-            ) : null}
-            {phase === "discussion" ? (
-              <div className="rounded-xl border border-zinc-700/90 bg-zinc-900/85 p-3">
-                <p className="text-xs font-semibold text-zinc-200">
-                  {resultMessage}
-                </p>
-                <button
-                  onClick={replayReveal}
-                  className="mt-3 w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
-                >
-                  Replay Reveal
-                </button>
-                <button
-                  onClick={advanceToNextRound}
-                  className="mt-3 w-full rounded-md border border-white bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-black transition hover:bg-zinc-200"
-                >
-                  Next Round
-                </button>
-              </div>
-            ) : null}
-
-            {(phase === "offense-design" || phase === "defense-design") && (
-              <>
-                {phase === "offense-design" ? (
-                  <div className="rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3">
-                    <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                      Offense Templates
-                    </p>
-                    <select
-                      className="w-full rounded-md border border-zinc-600 bg-black px-2 py-2 text-xs font-semibold text-zinc-100"
-                      value={selectedOffenseTemplateId}
-                      onChange={(e) => {
-                        const templateId = e.target.value;
-                        setSelectedOffenseTemplateId(templateId);
-                        applyTemplateById("offense", templateId);
-                      }}
-                    >
-                      {offenseTemplates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-2 text-[11px] text-zinc-400">
-                      {offenseTemplates.find(
-                        (template) => template.id === selectedOffenseTemplateId,
-                      )?.description ??
-                        "Select a template to seed assignments."}
-                    </p>
-                    <button
-                      onClick={() => applySelectedTemplate("offense")}
-                      className="mt-2 w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
-                    >
-                      Apply Offense Template
-                    </button>
-                  </div>
-                ) : null}
-                {phase === "defense-design" ? (
-                  <div className="rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3">
-                    <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                      Defense Templates
-                    </p>
-                    <select
-                      className="w-full rounded-md border border-zinc-600 bg-black px-2 py-2 text-xs font-semibold text-zinc-100"
-                      value={selectedDefenseTemplateId}
-                      onChange={(e) => {
-                        const templateId = e.target.value;
-                        setSelectedDefenseTemplateId(templateId);
-                        applyTemplateById("defense", templateId);
-                      }}
-                    >
-                      {defenseTemplates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-2 text-[11px] text-zinc-400">
-                      {defenseTemplates.find(
-                        (template) => template.id === selectedDefenseTemplateId,
-                      )?.description ??
-                        "Select a template to seed assignments."}
-                    </p>
-                    <button
-                      onClick={() => applySelectedTemplate("defense")}
-                      className="mt-2 w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
-                    >
-                      Apply Defense Template
-                    </button>
-                  </div>
-                ) : null}
-                {currentSelected?.assignment === "man" ? (
-                  <div className="rounded-xl border border-zinc-700/90 bg-zinc-950/80 p-3 text-xs font-semibold text-zinc-100">
-                    <p className="uppercase tracking-wide text-zinc-400">
-                      Man target
-                    </p>
-                    <p className="mt-1 text-[11px] font-medium text-zinc-300">
-                      Click an offensive skill player on the field or in the
-                      player list.
-                    </p>
-                    <p className="mt-2 text-[11px] font-bold text-cyan-300">
-                      Current:{" "}
-                      {offensivePlayers.find(
-                        (player) => player.id === currentSelected.manTargetId,
-                      )?.label ?? "None"}
-                    </p>
-                  </div>
-                ) : null}
-                <AssignmentPanel
-                  selectedPlayer={currentSelected}
-                  phase={phase}
-                  activeAssignment={activeAssignment}
-                  offenseRunCarrierId={offenseRunCarrierId}
-                  setAssignment={setAssignment}
-                  clearPath={clearPath}
-                  lockPhase={lockPhase}
-                />
-                {phase === "offense-design" && lastOffensePlay ? (
-                  <button
-                    onClick={() => applySavedTeamPlay("offense")}
-                    className="w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
-                  >
-                    Run Same Offense Play
-                  </button>
-                ) : null}
-                {phase === "defense-design" && lastDefensePlay ? (
-                  <button
-                    onClick={() => applySavedTeamPlay("defense")}
-                    className="w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
-                  >
-                    Run Same Defense Play
-                  </button>
-                ) : null}
-                {phase === "defense-design" ? (
-                  <button
-                    onClick={() => {
-                      setSelectedPlayerId(undefined);
-                      setActiveAssignment(undefined);
-                      setPhase("offense-design");
-                    }}
-                    className="w-full rounded-md border border-zinc-500 bg-zinc-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-zinc-100 transition hover:border-white hover:bg-zinc-800"
-                  >
-                    Back To Offense
-                  </button>
-                ) : null}
-              </>
-            )}
-
-            <div>
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                Players
-              </p>
-              <div className="grid grid-cols-2 gap-2 text-xs text-zinc-200">
-                {controlPanelPlayers.map((player) => (
-                  <PlayerPiece
-                    key={player.id}
-                    player={player}
-                    isSelected={player.id === selectedPlayerId}
-                    isManTargetCandidate={
-                      isManTargetSelectionMode &&
-                      player.team === "offense" &&
-                      ELIGIBLE_ROLES.has(player.role)
-                    }
-                    isCurrentManTarget={currentManTargetId === player.id}
-                    onClick={handleSelectPlayer}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
-
+      <ControlsPanel
+        controlsOpen={controlsOpen}
+        phase={phase}
+        situation={situation}
+        offenseWins={offenseWins}
+        defenseWins={defenseWins}
+        onResetMatch={resetMatch}
+        resultMessage={resultMessage}
+        onReplayReveal={replayReveal}
+        onAdvanceToNextRound={advanceToNextRound}
+        offenseTemplates={offenseTemplates}
+        defenseTemplates={defenseTemplates}
+        selectedOffenseTemplateId={selectedOffenseTemplateId}
+        selectedDefenseTemplateId={selectedDefenseTemplateId}
+        setSelectedOffenseTemplateId={setSelectedOffenseTemplateId}
+        setSelectedDefenseTemplateId={setSelectedDefenseTemplateId}
+        applyTemplateById={applyTemplateById}
+        applySelectedTemplate={applySelectedTemplate}
+        currentSelected={currentSelected}
+        offensivePlayers={offensivePlayers}
+        activeAssignment={activeAssignment}
+        offenseRunCarrierId={offenseRunCarrierId}
+        setAssignment={setAssignment}
+        clearPath={clearPath}
+        lockPhase={lockPhase}
+        hasLastOffensePlay={Boolean(lastOffensePlay)}
+        hasLastDefensePlay={Boolean(lastDefensePlay)}
+        applySavedTeamPlay={applySavedTeamPlay}
+        onBackToOffense={() => {
+          setSelectedPlayerId(undefined);
+          setActiveAssignment(undefined);
+          setPhase("offense-design");
+        }}
+        controlPanelPlayers={controlPanelPlayers}
+        selectedPlayerId={selectedPlayerId}
+        isManTargetSelectionMode={isManTargetSelectionMode}
+        isCurrentManTarget={(playerId) => currentManTargetId === playerId}
+        onSelectPlayer={handleSelectPlayer}
+        isEligibleRole={(role) => ELIGIBLE_ROLES.has(role)}
+      />
       <button
         onClick={() => setControlsOpen((prev) => !prev)}
         aria-label={controlsOpen ? "Hide controls" : "Show controls"}
